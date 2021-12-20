@@ -1,0 +1,12 @@
+#ifndef LLVM_LIB_TARGET_USIM_TARGETINFO_USIMTARGETINFO_H
+#define LLVM_LIB_TARGET_USIM_TARGETINFO_USIMTARGETINFO_H
+
+namespace llvm {
+
+class Target;
+
+Target &getTheUSimTarget();
+
+} // namespace llvm
+
+#endif // LLVM_LIB_TARGET_USIM_TARGETINFO_USIMTARGETINFO_H
