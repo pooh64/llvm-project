@@ -5,9 +5,22 @@
 #include "llvm/Target/TargetMachine.h"
 
 namespace llvm {
-  class USimTargetMachine;
-  class FunctionPass;
+class USimTargetMachine;
+class FunctionPass;
 
-} // end namespace llvm;
+FunctionPass *createUSimISelDag(USimTargetMachine &TM,
+                                CodeGenOpt::Level OptLevel);
+
+namespace USim {
+enum {
+  GP = USim::R0,
+  RA = USim::R1,
+  SP = USim::R2,
+  FP = USim::R3,
+  BP = USim::R4,
+};
+} // namespace USim
+
+} // namespace llvm
 
 #endif

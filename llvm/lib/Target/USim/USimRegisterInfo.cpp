@@ -34,17 +34,21 @@ bool USimRegisterInfo::needsFrameMoves(const MachineFunction &MF) {
 
 const MCPhysReg *
 USimRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
-  llvm_unreachable("");
-  // const USimSubtarget &Subtarget = MF.getSubtarget<USimSubtarget>();
+  return CSR_USim_SaveList;
 }
 
 BitVector USimRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
-  llvm_unreachable("");
+  BitVector Reserved(getNumRegs());
+  Reserved.set(USim::R0);
+  Reserved.set(USim::R1);
+  Reserved.set(USim::R2);
+  Reserved.set(USim::R3);
+  return Reserved;
 }
 
 bool USimRegisterInfo::requiresRegisterScavenging(
     const MachineFunction &MF) const {
-  llvm_unreachable("");
+  return false; // TODO: what for?
 }
 
 #if 0
@@ -54,10 +58,29 @@ bool USimRegisterInfo::useFPForScavengingIndex(
 }
 #endif
 
+// TODO: rewrite!
 void USimRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
                                            int SPAdj, unsigned FIOperandNum,
                                            RegScavenger *RS) const {
-  llvm_unreachable("");
+  assert(SPAdj == 0 && "Unexpected non-zero SPAdj value");
+
+  MachineInstr &MI = *II;
+  MachineFunction &MF = *MI.getParent()->getParent();
+  DebugLoc DL = MI.getDebugLoc();
+
+  int FrameIndex = MI.getOperand(FIOperandNum).getIndex();
+  Register FrameReg;
+  int Offset = getFrameLowering(MF)
+                   ->getFrameIndexReference(MF, FrameIndex, FrameReg)
+                   .getFixed();
+  Offset += MI.getOperand(FIOperandNum + 1).getImm();
+
+  if (!isInt<16>(Offset)) {
+    llvm_unreachable("");
+  }
+
+  MI.getOperand(FIOperandNum).ChangeToRegister(FrameReg, false, false, false);
+  MI.getOperand(FIOperandNum + 1).ChangeToImmediate(Offset);
 }
 
 Register USimRegisterInfo::getFrameRegister(const MachineFunction &MF) const {

@@ -55,13 +55,12 @@ public:
       : TargetPassConfig(TM, PM) {}
 
   USimTargetMachine &getUSimTargetMachine() const {
-    llvm_unreachable("");
     return getTM<USimTargetMachine>();
   }
 
   bool addInstSelector() override;
-  void addPreEmitPass() override;
-  void addPreRegAlloc() override;
+  // void addPreEmitPass() override;
+  // void addPreRegAlloc() override;
 };
 
 } // end anonymous namespace
@@ -70,11 +69,14 @@ TargetPassConfig *USimTargetMachine::createPassConfig(PassManagerBase &PM) {
   return new USimPassConfig(*this, PM);
 }
 
-bool USimPassConfig::addInstSelector() { llvm_unreachable(""); }
+bool USimPassConfig::addInstSelector() {
+  addPass(createUSimISelDag(getUSimTargetMachine(), getOptLevel()));
+  return false;
+}
 
-void USimPassConfig::addPreEmitPass() { llvm_unreachable(""); }
+// void USimPassConfig::addPreEmitPass() { llvm_unreachable(""); }
 
-void USimPassConfig::addPreRegAlloc() { llvm_unreachable(""); }
+// void USimPassConfig::addPreRegAlloc() { llvm_unreachable(""); }
 
 // Force static initialization.
 extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeUSimTarget() {

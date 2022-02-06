@@ -7,6 +7,7 @@
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
@@ -22,5 +23,10 @@ void USimInstPrinter::printRegName(raw_ostream &OS, unsigned RegNo) const {
 void USimInstPrinter::printInst(const MCInst *MI, uint64_t Address,
                                 StringRef Annot, const MCSubtargetInfo &STI,
                                 raw_ostream &O) {
+  llvm_unreachable("");
+}
+
+void USimInstPrinter::printOperand(const MCInst *MI, int OpNum, raw_ostream &OS)
+{
   llvm_unreachable("");
 }

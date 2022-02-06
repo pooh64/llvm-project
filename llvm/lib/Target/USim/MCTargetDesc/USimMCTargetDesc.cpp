@@ -1,8 +1,9 @@
 #include "USimMCTargetDesc.h"
+#include "TargetInfo/USimTargetInfo.h"
+#include "USimInfo.h"
 #include "USimInstPrinter.h"
 #include "USimMCAsmInfo.h"
-//#include "USimTargetStreamer.h"
-#include "TargetInfo/USimTargetInfo.h"
+#include "USimTargetStreamer.h"
 #include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCInstrInfo.h"
 #include "llvm/MC/MCRegisterInfo.h"
@@ -54,11 +55,9 @@ static MCInstPrinter *createUSimMCInstPrinter(const Triple &T,
                                               const MCAsmInfo &MAI,
                                               const MCInstrInfo &MII,
                                               const MCRegisterInfo &MRI) {
-  llvm_unreachable("");
   return new USimInstPrinter(MAI, MII, MRI);
 }
 
-#if 0
 USimTargetStreamer::USimTargetStreamer(MCStreamer &S) : MCTargetStreamer(S) {}
 USimTargetStreamer::~USimTargetStreamer() = default;
 
@@ -68,7 +67,6 @@ static MCTargetStreamer *createTargetAsmStreamer(MCStreamer &S,
                                                  bool isVerboseAsm) {
   return new USimTargetStreamer(S);
 }
-#endif
 
 // Force static initialization.
 extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeUSimTargetMC() {
@@ -88,8 +86,7 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeUSimTargetMC() {
 
   // Register the MCInstPrinter
   TargetRegistry::RegisterMCInstPrinter(TheUSimTarget, createUSimMCInstPrinter);
-#if 0
-    TargetRegistry::RegisterAsmTargetStreamer(TheUSimTarget,
-                                              createTargetAsmStreamer);
-#endif
+
+  TargetRegistry::RegisterAsmTargetStreamer(TheUSimTarget,
+                                            createTargetAsmStreamer);
 }

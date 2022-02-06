@@ -30,6 +30,15 @@ public:
     return TLOF.get();
   }
 
+#if 0
+  bool
+  addPassesToEmitFile(PassManagerBase &, raw_pwrite_stream &,
+                      raw_pwrite_stream *, CodeGenFileType,
+                      bool /*DisableVerify*/ = true,
+                      MachineModuleInfoWrapperPass *MMIWP = nullptr) override {
+    return false;
+  }
+#endif
   // TargetTransformInfo getTargetTransformInfo(const Function &F) override;
 };
 } // end namespace llvm

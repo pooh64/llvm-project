@@ -10,6 +10,22 @@ namespace llvm {
 class USimSubtarget;
 class USimTargetMachine;
 
+namespace USimISD {
+
+enum NodeType : unsigned {
+  // Start the numbering where the builtin ops and target ops leave off.
+  FIRST_NUMBER = ISD::BUILTIN_OP_END,
+  // BL,
+  // JL,
+  // CMP,
+  // CMOV,
+  // BRcc,
+  // GAWRAPPER,
+  RET
+};
+
+} // namespace USimISD
+
 class USimTargetLowering : public TargetLowering {
 public:
   explicit USimTargetLowering(const TargetMachine &TM,
