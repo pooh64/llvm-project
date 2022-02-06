@@ -28,9 +28,9 @@ let Namespace = "USim" in {
   def R10   : USimReg<10, "r10">,   DwarfRegNum<[10]>; // a1
   def R11   : USimReg<11, "r11">,   DwarfRegNum<[11]>; // a2
   def R12   : USimReg<12, "r12">,   DwarfRegNum<[12]>; // a3
-  def R13   : USimReg<13, "r13">,   DwarfRegNum<[13]>; // a4
-  def R14   : USimReg<14, "r14">,   DwarfRegNum<[14]>; // t0
-  def R15   : USimReg<15, "r15">,   DwarfRegNum<[15]>; // t1
+  def R13   : USimReg<13, "r13">,   DwarfRegNum<[13]>; // t0
+  def R14   : USimReg<14, "r14">,   DwarfRegNum<[14]>; // t1
+  def R15   : USimReg<15, "r15">,   DwarfRegNum<[15]>; // t2
 }
 
 //===----------------------------------------------------------------------===//

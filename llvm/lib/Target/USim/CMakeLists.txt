@@ -9,6 +9,7 @@ set(LLVM_TARGET_DEFINITIONS USim.td)
 tablegen(LLVM USimGenRegisterInfo.inc -gen-register-info)
 tablegen(LLVM USimGenInstrInfo.inc -gen-instr-info)
 tablegen(LLVM USimGenCallingConv.inc -gen-callingconv)
+tablegen(LLVM USimGenMCPseudoLowering.inc -gen-pseudo-lowering)
 tablegen(LLVM USimGenSubtargetInfo.inc -gen-subtarget)
 tablegen(LLVM USimGenAsmWriter.inc -gen-asm-writer)
 tablegen(LLVM USimGenDAGISel.inc -gen-dag-isel)
@@ -26,6 +27,7 @@ add_llvm_target(USimCodeGen
   USimISelDagToDag.cpp
   USimISelLowering.cpp
   USimMachineFunctionInfo.cpp
+  USimMCInstLower.cpp
   USimRegisterInfo.cpp
   USimSubtarget.cpp
   USimTargetMachine.cpp

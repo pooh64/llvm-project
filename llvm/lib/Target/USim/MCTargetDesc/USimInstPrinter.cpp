@@ -16,17 +16,30 @@ using namespace llvm;
 
 #include "USimGenAsmWriter.inc"
 
-void USimInstPrinter::printRegName(raw_ostream &OS, unsigned RegNo) const {
-  llvm_unreachable("");
+void USimInstPrinter::printRegName(raw_ostream &O, unsigned RegNo) const {
+  O << getRegisterName(RegNo);
 }
 
 void USimInstPrinter::printInst(const MCInst *MI, uint64_t Address,
                                 StringRef Annot, const MCSubtargetInfo &STI,
                                 raw_ostream &O) {
-  llvm_unreachable("");
+  printInstruction(MI, Address, O);
+  printAnnotation(O, Annot);
 }
 
-void USimInstPrinter::printOperand(const MCInst *MI, int OpNum, raw_ostream &OS)
-{
-  llvm_unreachable("");
+void USimInstPrinter::printOperand(const MCInst *MI, int OpNo, raw_ostream &O) {
+  const MCOperand &MO = MI->getOperand(OpNo);
+
+  if (MO.isReg()) {
+    printRegName(O, MO.getReg());
+    return;
+  }
+
+  if (MO.isImm()) {
+    O << MO.getImm();
+    return;
+  }
+
+  assert(MO.isExpr() && "Unknown operand kind in printOperand");
+  MO.getExpr()->print(O, &MAI);
 }

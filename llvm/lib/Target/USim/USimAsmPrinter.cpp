@@ -33,19 +33,27 @@ public:
 
   StringRef getPassName() const override { return "USim Assembly Printer"; }
 
+  bool emitPseudoExpansionLowering(MCStreamer &OutStreamer,
+                                   const MachineInstr *MI);
+
   void emitInstruction(const MachineInstr *MI) override;
   bool runOnMachineFunction(MachineFunction &MF) override;
 };
 
 } // end anonymous namespace
 
+// Simple pseudo-instructions have their lowering (with expansion to real
+// instructions) auto-generated.
+#include "USimGenMCPseudoLowering.inc"
+
 void USimAsmPrinter::emitInstruction(const MachineInstr *MI) {
-  llvm_unreachable("");
-#if 0
+  // Do any auto-generated pseudo lowerings.
+  if (emitPseudoExpansionLowering(*OutStreamer, MI))
+    return;
+
   MCInst TmpInst;
   if (!lowerUSimMachineInstrToMCInst(MI, TmpInst, *this))
-    AsmPrinter::EmitToStreamer(*OutStreamer, TmpInst);
-#endif
+    EmitToStreamer(*OutStreamer, TmpInst);
 }
 
 bool USimAsmPrinter::runOnMachineFunction(MachineFunction &MF) {

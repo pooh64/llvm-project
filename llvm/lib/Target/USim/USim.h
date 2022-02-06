@@ -7,9 +7,23 @@
 namespace llvm {
 class USimTargetMachine;
 class FunctionPass;
+class USimSubtarget;
+class AsmPrinter;
+class InstructionSelector;
+class MCInst;
+class MCOperand;
+class MachineInstr;
+class MachineOperand;
+class PassRegistry;
+
+bool lowerUSimMachineInstrToMCInst(const MachineInstr *MI, MCInst &OutMI,
+                                    AsmPrinter &AP);
+bool LowerUSimMachineOperandToMCOperand(const MachineOperand &MO,
+                                         MCOperand &MCOp, const AsmPrinter &AP);
 
 FunctionPass *createUSimISelDag(USimTargetMachine &TM,
                                 CodeGenOpt::Level OptLevel);
+
 
 namespace USim {
 enum {
