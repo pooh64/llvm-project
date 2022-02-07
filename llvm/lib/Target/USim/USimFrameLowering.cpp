@@ -169,67 +169,6 @@ void USimFrameLowering::emitEpilogue(MachineFunction &MF,
   adjustReg(MBB, MBBI, DL, SPReg, SPReg, StackSize, MachineInstr::FrameDestroy);
 }
 
-#if 0
-// TODO: inherited from ARC
-bool USimFrameLowering::assignCalleeSavedSpillSlots(
-    MachineFunction &MF, const TargetRegisterInfo *TRI,
-    std::vector<CalleeSavedInfo> &CSI) const {
-  llvm_unreachable("");
-  int CurOffset = -4;
-  Register Last = std::max_element(CSI.begin(), CSI.end(),
-                                   [](CalleeSavedInfo I1, CalleeSavedInfo I2) {
-                                     return I1.getReg() < I2.getReg();
-                                   })
-                      ->getReg();
-  MachineFrameInfo &MFI = MF.getFrameInfo();
-  if (hasFP(MF)) {
-    // Create a fixed slot at for FP
-    int StackObj = MFI.CreateFixedSpillStackObject(4, CurOffset, true);
-    LLVM_DEBUG(dbgs() << "Creating fixed object (" << StackObj << ") for FP at "
-                      << CurOffset << "\n");
-    (void)StackObj;
-    CurOffset -= 4;
-  }
-  if (MFI.hasCalls()) {
-    // Create a fixed slot for BLINK.
-    int StackObj = MFI.CreateFixedSpillStackObject(4, CurOffset, true);
-    LLVM_DEBUG(dbgs() << "Creating fixed object (" << StackObj
-                      << ") for BLINK at " << CurOffset << "\n");
-    (void)StackObj;
-    CurOffset -= 4;
-  }
-
-  // Create slots for last down to r13.
-  for (unsigned Which = Last; Which > USim::R11; Which--) {
-    auto RegI = getSavedReg(CSI, Which);
-    if (RegI == CSI.end() || RegI->getFrameIdx() == 0) {
-      // Always create the stack slot.  If for some reason the register isn't in
-      // the save list, then don't worry about it.
-      int FI = MFI.CreateFixedSpillStackObject(4, CurOffset, true);
-      if (RegI != CSI.end())
-        RegI->setFrameIdx(FI);
-    } else
-      MFI.setObjectOffset(RegI->getFrameIdx(), CurOffset);
-    CurOffset -= 4;
-  }
-  for (auto &I : CSI) {
-    if (I.getReg() > USim::R11)
-      continue;
-    if (I.getFrameIdx() == 0) {
-      I.setFrameIdx(MFI.CreateFixedSpillStackObject(4, CurOffset, true));
-      LLVM_DEBUG(dbgs() << "Creating fixed object (" << I.getFrameIdx()
-                        << ") for other register at " << CurOffset << "\n");
-    } else {
-      MFI.setObjectOffset(I.getFrameIdx(), CurOffset);
-      LLVM_DEBUG(dbgs() << "Updating fixed object (" << I.getFrameIdx()
-                        << ") for other register at " << CurOffset << "\n");
-    }
-    CurOffset -= 4;
-  }
-  return true;
-}
-#endif
-
 // TODO: seems ok
 bool USimFrameLowering::spillCalleeSavedRegisters(
     MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
@@ -334,7 +273,7 @@ bool USimFrameLowering::hasFP(const MachineFunction &MF) const {
   const TargetRegisterInfo *RegInfo = MF.getSubtarget().getRegisterInfo();
 
   const MachineFrameInfo &MFI = MF.getFrameInfo();
-  return MF.getTarget().Options.DisableFramePointerElim(MF) ||
+  return MF.getTarget().Options.DisableFramePointerElim(MF) || // -fomit-frame-pointer
          RegInfo->hasStackRealignment(MF) || MFI.hasVarSizedObjects() ||
          MFI.isFrameAddressTaken();
 }

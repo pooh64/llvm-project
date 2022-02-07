@@ -353,11 +353,30 @@ SDValue USimTargetLowering::PerformDAGCombine(SDNode *N,
 
 /// Return true if the addressing mode represented by AM is legal for this
 /// target, for a load/store of the specified type.
+// TODO: verify
 bool USimTargetLowering::isLegalAddressingMode(const DataLayout &DL,
                                                const AddrMode &AM, Type *Ty,
                                                unsigned AS,
                                                Instruction *I) const {
-  llvm_unreachable("");
+  // No global is ever allowed as a base.
+  if (AM.BaseGV)
+    return false;
+
+  if (!isInt<16>(AM.BaseOffs))
+    return false;
+
+  switch (AM.Scale) {
+  case 0: // "r+i" or just "i", depending on HasBaseReg.
+    break;
+  case 1:
+    if (!AM.HasBaseReg) // allow "r+i".
+      break;
+    return false; // disallow "r+r" or "r+r+i".
+  default:
+    return false;
+  }
+
+  return true;
 }
 
 // Don't emit tail calls for the time being.

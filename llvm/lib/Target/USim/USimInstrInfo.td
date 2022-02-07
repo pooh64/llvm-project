@@ -60,6 +60,10 @@ class SImmAsmOperand<int width, string suffix = "">
     : ImmAsmOperand<"S", width, suffix> {
 }
 
+class UImmAsmOperand<int width, string suffix = "">
+    : ImmAsmOperand<"U", width, suffix> {
+}
+
 def simm16 : Operand<i32>, ImmLeaf<i32, [{return isInt<16>(Imm);}]> {
   let ParserMatchClass = SImmAsmOperand<16>;
   let EncoderMethod = "getImmOpValue";
@@ -74,17 +78,44 @@ def simm16 : Operand<i32>, ImmLeaf<i32, [{return isInt<16>(Imm);}]> {
   let OperandNamespace = "USimOp";
 }
 
-def LO16 : SDNodeXForm<imm, [{
+def uimm16 : Operand<i32>, ImmLeaf<i32, [{return isUInt<16>(Imm);}]> {
+  let ParserMatchClass = UImmAsmOperand<16>;
+  let EncoderMethod = "getImmOpValue";
+  let DecoderMethod = "decodeUImmOperand<16>";
+  let MCOperandPredicate = [{
+    int64_t Imm;
+    if (MCOp.evaluateAsConstantImm(Imm))
+      return isUInt<16>(Imm);
+    return MCOp.isBareSymbolRef();
+  }];
+  let OperandType = "OPERAND_UIMM16";
+  let OperandNamespace = "USimOp";
+}
+
+def LI16 : SDNodeXForm<imm, [{
   return CurDAG->getTargetConstant((uint64_t)N->getZExtValue() & 0xffff,
                                    SDLoc(N), MVT::i32);
 }]>;
 
-//def LoImm16AsmOperand : AsmOperandClass { let Name = "LoImm16"; }
-def i32lo16u : Operand<i32>, PatLeaf<(i32 imm), [{
-    return ((N->getZExtValue() & 0xFFFFUL) == N->getZExtValue());}], LO16> {
-  //let ParserMatchClass = LoImm16AsmOperand;
+def HI16 : SDNodeXForm<imm, [{
+  return CurDAG->getTargetConstant((uint64_t)N->getZExtValue() >> 16, SDLoc(N),
+                                   MVT::i32);
+}]>;
+
+// def LiImm16AsmOperand : AsmOperandClass { let Name = "LiImm16"; }
+def i32li16u : Operand<i32>, PatLeaf<(i32 imm), [{
+    return ((N->getZExtValue() & 0xFFFFUL) == N->getZExtValue());}], LI16> {
+  // let ParserMatchClass = LiImm16AsmOperand;
 }
 
+// def HiImm16AsmOperand : AsmOperandClass { let Name = "HiImm16"; }
+def i32hi16 : Operand<i32>, PatLeaf<(i32 imm), [{
+    // i32hi16 predicate - true if the 32-bit immediate has only leftmost 16
+    // bits set.
+    return ((N->getZExtValue() & 0xFFFF0000UL) == N->getZExtValue());}], HI16> {
+  // let ParserMatchClass = HiImm16AsmOperand;
+  // let PrintMethod = "printHi16ImmOperand";
+}
 
 // Addressing modes
 def AddrFI : ComplexPattern<iPTR, 1, "SelectAddrFI", [frameindex], []>;
@@ -113,45 +144,68 @@ class Branches<bits<8> op, string instr_asm, RegisterClass RC>:
 
 // ret TODO: pseudo
 let isReturn = 1, isTerminator = 1, isBarrier = 1  in
-def RET : USimInst<0x0, (outs), (ins), "jr\t[%r1]", [(USimRet)]> {
+def RET : USimInst<0x0, (outs), (ins), "br\t[%r1]", [(USimRet)]> {
   let r1 = 1;
 }
 
 // movli
 let isAsCheapAsAMove = 1, isCodeGenOnly = 1, isReMaterializable = 1 in
-def MOVLI : USimInst<0x0, (outs GPR:$rd), (ins i32lo16u:$r3_imm),
-                     "movli\t$r3_imm, $rd",
-                     [(set GPR:$rd, i32lo16u:$r3_imm)]>;
+def MOVLI : USimInst<0x0, (outs GPR:$rd), (ins i32li16u:$imm),
+                     "movli\t$rd, $imm",
+                     [(set GPR:$rd, i32li16u:$imm)]>;
+
+// movhi
+let isAsCheapAsAMove = 1, isCodeGenOnly = 1, isReMaterializable = 1 in
+def MOVHI : USimInst<0x0, (outs GPR:$rd), (ins i32hi16:$imm),
+                     "movhi\t$rd, $imm",
+                     [(set GPR:$rd, i32hi16:$imm)]>;
+
+// TODO: movi pseudo
 
 // nop
 def NOP   : USimInst<0x0, (outs), (ins), "nop", []>;
 
 // sti, but not SubtargetInfo!
 let hasSideEffects = 0, mayLoad = 0, mayStore = 1 in
-def STI_: USimInst<0x0, (outs), (ins GPR:$rs2, GPR:$rs1, simm16:$r3_imm),
-              "sti\t$rs2, ${r3_imm}(${rs1})",
+def STI_: USimInst<0x0, (outs), (ins GPR:$rs2, GPR:$rs1, simm16:$imm),
+              "sti\t$rs2, ${imm}(${rs1})",
               []>;
 def : Pat<(store (i32 GPR:$rs2), BaseAddr:$rs1),
         (STI_ GPR:$rs2, BaseAddr:$rs1, 0)>;
-def : Pat<(store (i32 GPR:$rs2), (add BaseAddr:$rs1, simm16:$r3_imm)),
-        (STI_ GPR:$rs2, BaseAddr:$rs1, simm16:$r3_imm)>;
-def : Pat<(store (i32 GPR:$rs2), (IsOrAdd AddrFI:$rs1, simm16:$r3_imm)),
-        (STI_ GPR:$rs2, AddrFI:$rs1, simm16:$r3_imm)>;
+def : Pat<(store (i32 GPR:$rs2), (add BaseAddr:$rs1, simm16:$imm)),
+        (STI_ GPR:$rs2, BaseAddr:$rs1, simm16:$imm)>;
+def : Pat<(store (i32 GPR:$rs2), (IsOrAdd AddrFI:$rs1, simm16:$imm)),
+        (STI_ GPR:$rs2, AddrFI:$rs1, simm16:$imm)>;
 
 // ldi
 let hasSideEffects = 0, mayLoad = 1, mayStore = 0 in
-def LDI: USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs1, simm16:$r3_imm),
-              "ldi\t${r3_imm}(${rs1}), $rd",
+def LDI: USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs1, simm16:$imm),
+              "ldi\t$rd, ${imm}(${rs1})",
               []>;
 def : Pat<(i32 (load BaseAddr:$rs1)), (LDI BaseAddr:$rs1, 0)>;
-def : Pat<(i32 (load (add BaseAddr:$rs1, simm16:$r3_imm))),
-          (LDI BaseAddr:$rs1, simm16:$r3_imm)>;
-def : Pat<(i32 (load (IsOrAdd AddrFI:$rs1, simm16:$r3_imm))),
-          (LDI AddrFI:$rs1, simm16:$r3_imm)>;
+def : Pat<(i32 (load (add BaseAddr:$rs1, simm16:$imm))),
+          (LDI BaseAddr:$rs1, simm16:$imm)>;
+def : Pat<(i32 (load (IsOrAdd AddrFI:$rs1, simm16:$imm))),
+          (LDI AddrFI:$rs1, simm16:$imm)>;
 
 // addi
 let isAsCheapAsAMove = 1 in
-def ADDI : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs1, simm16:$r3_imm),
-                     "addi\t$rs1, $r3_imm, $rd",
-                     [(set GPR:$rd, (add GPR:$rs1, simm16:$r3_imm))]>;
+def ADDI : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs1, simm16:$imm),
+                     "addi\t$rd, $rs1, $imm",
+                     [(set GPR:$rd, (add GPR:$rs1, simm16:$imm))]>;
 
+// ori
+let isAsCheapAsAMove = 1 in
+def ORI : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs1, simm16:$imm),
+                     "ori\t$rd, $rs1, $imm",
+                     [(set GPR:$rd, (or GPR:$rs1, simm16:$imm))]>;
+
+//===----------------------------------------------------------------------===//
+// USim Other patterns
+//===----------------------------------------------------------------------===//
+
+// u16 imm
+def : Pat<(i32 i32li16u:$imm), (MOVLI imm:$imm)>;
+
+// i32 imm
+def : Pat<(i32 imm:$imm), (ORI (MOVHI (HI16 imm:$imm)), (LI16 imm:$imm))>;

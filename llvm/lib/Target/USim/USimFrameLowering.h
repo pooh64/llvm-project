@@ -50,13 +50,6 @@ public:
 
   bool hasReservedCallFrame(const MachineFunction &MF) const override;
 
-#if 0
-  // TODO: eliminate
-  bool assignCalleeSavedSpillSlots(
-      llvm::MachineFunction &, const llvm::TargetRegisterInfo *,
-      std::vector<llvm::CalleeSavedInfo> &) const override;
-#endif
-
 private:
   void adjustStackToMatchRecords(MachineBasicBlock &MBB,
                                  MachineBasicBlock::iterator MI,

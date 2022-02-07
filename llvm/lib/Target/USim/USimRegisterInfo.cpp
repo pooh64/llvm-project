@@ -37,6 +37,7 @@ USimRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
   return CSR_USim_SaveList;
 }
 
+// TODO: check cconv
 BitVector USimRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
   BitVector Reserved(getNumRegs());
   Reserved.set(USim::R0);
@@ -84,7 +85,8 @@ void USimRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator II,
 }
 
 Register USimRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
-  llvm_unreachable("");
+  const TargetFrameLowering *TFI = getFrameLowering(MF);
+  return TFI->hasFP(MF) ? USim::FP : USim::SP;
 }
 
 const uint32_t *
