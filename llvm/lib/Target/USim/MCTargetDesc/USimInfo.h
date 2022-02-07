@@ -19,6 +19,7 @@ enum BRCondCode {
 namespace USimOp {
 enum OperandType : unsigned {
   OPERAND_SIMM16 = MCOI::OPERAND_FIRST_TARGET,
+  OPERAND_UIMM16,
 };
 } // namespace USimOp
 

@@ -43,6 +43,8 @@ public:
                              unsigned AS,
                              Instruction *I = nullptr) const override;
 
+  USimSubtarget const &getSubtarget() const { return STI; }
+
 private:
   const USimSubtarget &STI;
 

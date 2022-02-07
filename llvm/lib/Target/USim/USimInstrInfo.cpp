@@ -140,10 +140,16 @@ unsigned USimInstrInfo::removeBranch(MachineBasicBlock &MBB,
 }
 
 void USimInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
-                                MachineBasicBlock::iterator I,
-                                const DebugLoc &DL, MCRegister DestReg,
+                                MachineBasicBlock::iterator MBBI,
+                                const DebugLoc &DL, MCRegister DstReg,
                                 MCRegister SrcReg, bool KillSrc) const {
-  llvm_unreachable("");
+  if (USim::GPRRegClass.contains(DstReg, SrcReg)) {
+    BuildMI(MBB, MBBI, DL, get(USim::ADDI), DstReg)
+        .addReg(SrcReg, getKillRegState(KillSrc))
+        .addImm(0);
+    return;
+  }
+  llvm_unreachable("can't copyPhysReg");
 }
 
 void USimInstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,

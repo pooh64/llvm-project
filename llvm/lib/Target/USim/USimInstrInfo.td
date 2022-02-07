@@ -121,6 +121,14 @@ def i32hi16 : Operand<i32>, PatLeaf<(i32 imm), [{
 def AddrFI : ComplexPattern<iPTR, 1, "SelectAddrFI", [frameindex], []>;
 def BaseAddr : ComplexPattern<iPTR, 1, "SelectBaseAddr">;
 
+class PatGpr<SDPatternOperator OpNode, USimInst Inst>
+    : Pat<(OpNode GPR:$rs1), (Inst GPR:$rs1)>;
+class PatGprGpr<SDPatternOperator OpNode, USimInst Inst>
+    : Pat<(OpNode GPR:$rs1, GPR:$rs2), (Inst GPR:$rs1, GPR:$rs2)>;
+class PatGprImm<SDPatternOperator OpNode, USimInst Inst, ImmLeaf ImmType>
+    : Pat<(i32 (OpNode (i32 GPR:$rs1), ImmType:$imm)),
+          (Inst GPR:$rs1, ImmType:$imm)>;
+
 //===----------------------------------------------------------------------===//
 // Instructions specific format
 //===----------------------------------------------------------------------===//
@@ -162,7 +170,14 @@ def MOVHI : USimInst<0x0, (outs GPR:$rd), (ins i32hi16:$imm),
 
 // TODO: movi pseudo
 
-// nop
+// mov TODO: pseudo
+let isAsCheapAsAMove = 1, isCodeGenOnly = 1, isReMaterializable = 1 in
+def MOV : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs1),
+                   "mov\t$rd, $rs1",
+                   // [(set GPR:$rd, GPR:$rs1)]>; // kills isel
+                   []>;
+
+// nop TODO: pseudo
 def NOP   : USimInst<0x0, (outs), (ins), "nop", []>;
 
 // sti, but not SubtargetInfo!
@@ -188,17 +203,26 @@ def : Pat<(i32 (load (add BaseAddr:$rs1, simm16:$imm))),
 def : Pat<(i32 (load (IsOrAdd AddrFI:$rs1, simm16:$imm))),
           (LDI AddrFI:$rs1, simm16:$imm)>;
 
+// add
+let isAsCheapAsAMove = 1 in
+def ADD : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs2, GPR:$rs1),
+                   "add\t$rd, $rs1, $rs2",
+                   [(set GPR:$rd, (add GPR:$rs1, GPR:$rs2))]>;
+def : PatGprGpr<add, ADD>;
+
 // addi
 let isAsCheapAsAMove = 1 in
 def ADDI : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs1, simm16:$imm),
-                     "addi\t$rd, $rs1, $imm",
-                     [(set GPR:$rd, (add GPR:$rs1, simm16:$imm))]>;
+                    "addi\t$rd, $rs1, $imm",
+                    [(set GPR:$rd, (add GPR:$rs1, simm16:$imm))]>;
+def : PatGprImm<add, ADDI, simm16>;
 
 // ori
 let isAsCheapAsAMove = 1 in
-def ORI : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs1, simm16:$imm),
-                     "ori\t$rd, $rs1, $imm",
-                     [(set GPR:$rd, (or GPR:$rs1, simm16:$imm))]>;
+def ORI : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs1, uimm16:$imm),
+                   "ori\t$rd, $rs1, $imm",
+                   [(set GPR:$rd, (or GPR:$rs1, uimm16:$imm))]>;
+def : PatGprImm<add, ADDI, uimm16>;
 
 //===----------------------------------------------------------------------===//
 // USim Other patterns
@@ -206,6 +230,5 @@ def ORI : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs1, simm16:$imm),
 
 // u16 imm
 def : Pat<(i32 i32li16u:$imm), (MOVLI imm:$imm)>;
-
 // i32 imm
 def : Pat<(i32 imm:$imm), (ORI (MOVHI (HI16 imm:$imm)), (LI16 imm:$imm))>;
