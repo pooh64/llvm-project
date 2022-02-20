@@ -6,12 +6,14 @@
 #include "USimSubtarget.h"
 #include "USimTargetMachine.h"
 #include "llvm/CodeGen/CallingConvLower.h"
+#include "llvm/CodeGen/ISDOpcodes.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/Register.h"
+#include "llvm/CodeGen/SelectionDAGNodes.h"
 #include "llvm/CodeGen/ValueTypes.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Intrinsics.h"
@@ -53,6 +55,8 @@ USimTargetLowering::USimTargetLowering(const TargetMachine &TM,
 
   setOperationAction(ISD::Constant, MVT::i32, Legal);
   setOperationAction(ISD::UNDEF, MVT::i32, Legal);
+
+  setOperationAction(ISD::BR_CC, MVT::i32, Custom);
 }
 
 const char *USimTargetLowering::getTargetNodeName(unsigned Opcode) const {
@@ -407,7 +411,42 @@ bool USimTargetLowering::mayBeEmittedAsTailCall(const CallInst *CI) const {
   return false;
 }
 
+static void translateSetCCForBranch(const SDLoc &DL, SDValue &LHS, SDValue &RHS,
+                                    ISD::CondCode &CC, SelectionDAG &DAG) {
+  switch (CC) {
+  default:
+    break;
+  case ISD::SETLT:
+  case ISD::SETGE:
+    CC = ISD::getSetCCSwappedOperands(CC);
+    std::swap(LHS, RHS);
+    break;
+  }
+}
+
+SDValue USimTargetLowering::lowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
+  SDValue CC = Op.getOperand(1);
+  SDValue LHS = Op.getOperand(2);
+  SDValue RHS = Op.getOperand(3);
+  SDValue Block = Op->getOperand(4);
+  SDLoc DL(Op);
+
+  assert(LHS.getValueType() == MVT::i32);
+
+  ISD::CondCode CCVal = cast<CondCodeSDNode>(CC)->get();
+  translateSetCCForBranch(DL, LHS, RHS, CCVal, DAG);
+  SDValue TargetCC = DAG.getCondCode(CCVal);
+
+  return DAG.getNode(USimISD::BR_CC, DL, Op.getValueType(), Op.getOperand(0),
+                     LHS, RHS, TargetCC, Block);
+}
+
 SDValue USimTargetLowering::LowerOperation(SDValue Op,
                                            SelectionDAG &DAG) const {
-  llvm_unreachable("");
+  switch (Op->getOpcode()) {
+  case ISD::BR_CC:
+    return lowerBR_CC(Op, DAG);
+  default:
+    llvm_unreachable("");
+  }
 }

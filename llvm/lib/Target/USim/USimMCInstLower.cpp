@@ -13,10 +13,19 @@
 
 using namespace llvm;
 
-// TODO: symbols
+// TODO: verify
 static MCOperand lowerSymbolOperand(const MachineOperand &MO, MCSymbol *Sym,
                                     const AsmPrinter &AP) {
-  llvm_unreachable("");
+  MCContext &Ctx = AP.OutContext;
+
+  const MCExpr *ME =
+      MCSymbolRefExpr::create(Sym, MCSymbolRefExpr::VK_None, Ctx);
+
+  if (!MO.isJTI() && !MO.isMBB() && MO.getOffset())
+    ME = MCBinaryExpr::createAdd(
+        ME, MCConstantExpr::create(MO.getOffset(), Ctx), Ctx);
+
+  return MCOperand::createExpr(ME);
 }
 
 bool llvm::LowerUSimMachineOperandToMCOperand(const MachineOperand &MO,

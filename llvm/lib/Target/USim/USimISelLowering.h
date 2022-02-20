@@ -15,13 +15,8 @@ namespace USimISD {
 enum NodeType : unsigned {
   // Start the numbering where the builtin ops and target ops leave off.
   FIRST_NUMBER = ISD::BUILTIN_OP_END,
-  // BL,
-  // JL,
-  // CMP,
-  // CMOV,
-  // BRcc,
-  // GAWRAPPER,
-  RET
+  RET,
+  BR_CC,
 };
 
 } // namespace USimISD
@@ -73,6 +68,8 @@ private:
                       LLVMContext &Context) const override;
 
   bool mayBeEmittedAsTailCall(const CallInst *CI) const override;
+
+  SDValue lowerBR_CC(SDValue Op, SelectionDAG &DAG) const;
 };
 
 } // end namespace llvm

@@ -13,15 +13,21 @@ def SDT_USimCallSeqStart : SDCallSeqStart<[ SDTCisVT<0, i32>,
 def SDT_USimCallSeqEnd   : SDCallSeqEnd<[ SDTCisVT<0, i32>,
                                          SDTCisVT<1, i32> ]>;
 
+def SDT_USimBrCC : SDTypeProfile<0, 4, [SDTCisSameAs<0, 1>,
+                                         SDTCisVT<2, OtherVT>,
+                                         SDTCisVT<3, OtherVT>]>;
+
 // These are target-independent nodes, but have target-specific formats.
 def callseq_start : SDNode<"ISD::CALLSEQ_START", SDT_USimCallSeqStart,
                            [SDNPHasChain, SDNPOutGlue]>;
 def callseq_end   : SDNode<"ISD::CALLSEQ_END",   SDT_USimCallSeqEnd,
                            [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
 
-// Return
-def USimRet : SDNode<"USimISD::RET", SDTNone,
-                     [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
+def usim_ret      : SDNode<"USimISD::RET", SDTNone,
+                            [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
+
+def usim_brcc     : SDNode<"USimISD::BR_CC", SDT_USimBrCC,
+                            [SDNPHasChain]>;
 
 //===----------------------------------------------------------------------===//
 // Instruction format superclass
@@ -92,6 +98,20 @@ def uimm16 : Operand<i32>, ImmLeaf<i32, [{return isUInt<16>(Imm);}]> {
   let OperandNamespace = "USimOp";
 }
 
+def btarget16 : Operand<OtherVT> {
+  let ParserMatchClass = SImmAsmOperand<16>;
+  let PrintMethod = "printBranchOperand";
+  let EncoderMethod = "getImmOpValue";
+  let DecoderMethod = "decodeSImmOperand<16>";
+  let MCOperandPredicate = [{
+    int64_t Imm;
+    if (MCOp.evaluateAsConstantImm(Imm))
+      return isInt<16>(Imm);
+    return MCOp.isBareSymbolRef();
+  }];
+  let OperandType = "OPERAND_PCREL";
+}
+
 def LI16 : SDNodeXForm<imm, [{
   return CurDAG->getTargetConstant((uint64_t)N->getZExtValue() & 0xffff,
                                    SDLoc(N), MVT::i32);
@@ -129,18 +149,18 @@ class PatGprImm<SDPatternOperator OpNode, USimInst Inst, ImmLeaf ImmType>
     : Pat<(i32 (OpNode (i32 GPR:$rs1), ImmType:$imm)),
           (Inst GPR:$rs1, ImmType:$imm)>;
 
+class PatBcc<CondCode Cond, USimInst Inst>
+    : Pat<(usim_brcc GPR:$rs1, GPR:$rs2, Cond, bb:$imm16),
+          (Inst GPR:$rs1, GPR:$rs2, btarget16:$imm16)>;
+
 //===----------------------------------------------------------------------===//
 // Instructions specific format
 //===----------------------------------------------------------------------===//
 
-//@Branches {
-let isBranch=1, isTerminator=1, isBarrier=1, hasDelaySlot = 1,
-    isIndirectBranch = 1 in
-class Branches<bits<8> op, string instr_asm, RegisterClass RC>:
-  USimInst<op, (outs), (ins RC:$r1),
-     !strconcat(instr_asm, "\t$r1"), [(brind RC:$r1)]> {
-}
-//@Branches }
+let hasSideEffects = 0, mayLoad = 0, mayStore = 0, isBranch = 1, isTerminator = 1 in
+class BranchCC<bits<8> op, string opcodestr>
+    : USimInst<op, (outs), (ins GPR:$rs1, GPR:$rs2, btarget16:$imm16),
+              !strconcat(opcodestr, "\t$rs1, $rs2"), []>;
 
 //===----------------------------------------------------------------------===//
 // Instruction definition
@@ -150,9 +170,26 @@ class Branches<bits<8> op, string instr_asm, RegisterClass RC>:
 // USim Instructions
 //===----------------------------------------------------------------------===//
 
+def BEQ  : BranchCC<0x0, "beq">;
+def BNE  : BranchCC<0x0, "bne">;
+def BLE  : BranchCC<0x0, "ble">;
+def BGT  : BranchCC<0x0, "bgt">;
+
+def : PatBcc<SETEQ, BEQ>;
+def : PatBcc<SETNE, BNE>;
+def : PatBcc<SETLE, BLE>;
+def : PatBcc<SETGT, BGT>;
+//def : PatBcc<SETULE, BLEU>;
+//def : PatBcc<SETUGT, BGTU>;
+
+let hasSideEffects = 0, mayLoad = 0, mayStore = 0, isBarrier = 1, isBranch = 1, isTerminator = 1 in
+def B : USimInst<0x0, (outs), (ins btarget16:$imm16),
+                   "b\t $imm16",
+                   [(br bb:$imm16)]>;
+
 // ret TODO: pseudo
 let isReturn = 1, isTerminator = 1, isBarrier = 1  in
-def RET : USimInst<0x0, (outs), (ins), "br\t[%r1]", [(USimRet)]> {
+def RET : USimInst<0x0, (outs), (ins), "br\t[%r1]", [(usim_ret)]> {
   let r1 = 1;
 }
 
