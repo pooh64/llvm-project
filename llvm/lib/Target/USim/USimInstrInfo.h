@@ -1,6 +1,7 @@
 #ifndef LLVM_LIB_TARGET_USIM_USIMINSTRINFO_H
 #define LLVM_LIB_TARGET_USIM_USIMINSTRINFO_H
 
+#include "MCTargetDesc/USimInfo.h"
 #include "USimRegisterInfo.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 
@@ -14,6 +15,8 @@ class USimSubtarget;
 class USimInstrInfo : public USimGenInstrInfo {
   const USimSubtarget &STI;
   virtual void anchor();
+
+  const MCInstrDesc &getBrCond(USimCC::CondCode CC) const;
 
 public:
   USimInstrInfo(const USimSubtarget &);
@@ -37,6 +40,8 @@ public:
 
   unsigned removeBranch(MachineBasicBlock &MBB,
                         int *BytesRemoved = nullptr) const override;
+
+  MachineBasicBlock *getBranchDestBlock(const MachineInstr &MI) const override;
 
   void copyPhysReg(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
                    const DebugLoc &, MCRegister DestReg, MCRegister SrcReg,

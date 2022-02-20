@@ -174,24 +174,36 @@ def BEQ  : BranchCC<0x0, "beq">;
 def BNE  : BranchCC<0x0, "bne">;
 def BLE  : BranchCC<0x0, "ble">;
 def BGT  : BranchCC<0x0, "bgt">;
+def BLEU  : BranchCC<0x0, "bleu">;
+def BGTU  : BranchCC<0x0, "bgtu">;
 
 def : PatBcc<SETEQ, BEQ>;
 def : PatBcc<SETNE, BNE>;
 def : PatBcc<SETLE, BLE>;
 def : PatBcc<SETGT, BGT>;
-//def : PatBcc<SETULE, BLEU>;
-//def : PatBcc<SETUGT, BGTU>;
+def : PatBcc<SETULE, BLEU>;
+def : PatBcc<SETUGT, BGTU>;
 
 let hasSideEffects = 0, mayLoad = 0, mayStore = 0, isBarrier = 1, isBranch = 1, isTerminator = 1 in
 def B : USimInst<0x0, (outs), (ins btarget16:$imm16),
                    "b\t $imm16",
                    [(br bb:$imm16)]>;
 
-// ret TODO: pseudo
-let isReturn = 1, isTerminator = 1, isBarrier = 1  in
-def RET : USimInst<0x0, (outs), (ins), "br\t[%r1]", [(usim_ret)]> {
-  let r1 = 1;
-}
+// TODO: flags
+let hasSideEffects = 0, mayLoad = 0, mayStore = 0, isCall = 1, isBranch = 1, isTerminator = 1 in
+def BR : USimInst<0x0, (outs), (ins GPR:$rs1),
+                  "br\t $rs1", [(brind GPR:$rs1)]>;
+
+let isBarrier = 1, isReturn = 1, isTerminator = 1 in
+def PseudoRET : USimPseudoInst<(outs), (ins), "# PseudoRET", [(usim_ret)]>,
+                PseudoInstExpansion<(BR R1)>;
+
+// TODO: flags, call op
+let hasSideEffects = 0, mayLoad = 0, mayStore = 0, isCall = 1, isBranch = 1, isTerminator = 1 in
+def BL : USimInst<0x0, (outs GPR:$rd), (ins btarget16:$imm16),
+                  "bl\t $rd, $imm16", []>;
+
+// TODO: BRL
 
 // movli
 let isAsCheapAsAMove = 1, isCodeGenOnly = 1, isReMaterializable = 1 in
@@ -205,17 +217,15 @@ def MOVHI : USimInst<0x0, (outs GPR:$rd), (ins i32hi16:$imm),
                      "movhi\t$rd, $imm",
                      [(set GPR:$rd, i32hi16:$imm)]>;
 
-// TODO: movi pseudo
+// mov TODO: remove
+// let isAsCheapAsAMove = 1, isCodeGenOnly = 1, isReMaterializable = 1 in
+// def MOV : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs1),
+//                   "mov\t$rd, $rs1",
+//                   // [(set GPR:$rd, GPR:$rs1)]>; // kills isel
+//                   []>;
 
-// mov TODO: pseudo
-let isAsCheapAsAMove = 1, isCodeGenOnly = 1, isReMaterializable = 1 in
-def MOV : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs1),
-                   "mov\t$rd, $rs1",
-                   // [(set GPR:$rd, GPR:$rs1)]>; // kills isel
-                   []>;
-
-// nop TODO: pseudo
-def NOP   : USimInst<0x0, (outs), (ins), "nop", []>;
+// nop TODO: remove
+// def NOP   : USimInst<0x0, (outs), (ins), "nop", []>;
 
 // sti, but not SubtargetInfo!
 let hasSideEffects = 0, mayLoad = 0, mayStore = 1 in
@@ -265,7 +275,7 @@ def : PatGprImm<add, ADDI, uimm16>;
 // USim Other patterns
 //===----------------------------------------------------------------------===//
 
-// u16 imm
+// i16 imm
 def : Pat<(i32 i32li16u:$imm), (MOVLI imm:$imm)>;
 // i32 imm
 def : Pat<(i32 imm:$imm), (ORI (MOVHI (HI16 imm:$imm)), (LI16 imm:$imm))>;

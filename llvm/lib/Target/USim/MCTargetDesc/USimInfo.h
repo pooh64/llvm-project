@@ -7,9 +7,16 @@ namespace llvm {
 
 namespace USimCC {
 enum CondCode {
-  EQ = 0x0,
+  EQ,
+  NE,
+  LE,
+  GT,
+  LEU,
+  GTU,
   INVALID,
 };
+
+CondCode getOppositeBranchCondition(CondCode);
 
 enum BRCondCode {
   BREQ = 0x0,

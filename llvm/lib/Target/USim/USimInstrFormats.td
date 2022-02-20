@@ -43,4 +43,5 @@ class USimInst<bits<8> op, dag outs, dag ins, string asmstr, list<dag> pattern>:
 class USimPseudoInst<dag outs, dag ins, string asmstr, list<dag> pattern>
    : USimInst<0, outs, ins, asmstr, pattern> {
   let isPseudo = 1;
+  let isCodeGenOnly = 1;
 }
