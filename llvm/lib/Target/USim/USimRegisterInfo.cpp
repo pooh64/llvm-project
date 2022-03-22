@@ -92,5 +92,5 @@ Register USimRegisterInfo::getFrameRegister(const MachineFunction &MF) const {
 const uint32_t *
 USimRegisterInfo::getCallPreservedMask(const MachineFunction &MF,
                                        CallingConv::ID CC) const {
-  llvm_unreachable("");
+  return CSR_USim_RegMask;
 }

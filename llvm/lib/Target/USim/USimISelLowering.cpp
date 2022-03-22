@@ -11,6 +11,7 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
+#include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/Register.h"
 #include "llvm/CodeGen/SelectionDAGNodes.h"
@@ -48,7 +49,8 @@ USimTargetLowering::USimTargetLowering(const TargetMachine &TM,
   for (unsigned Opc = 0; Opc < ISD::BUILTIN_OP_END; ++Opc)
     setOperationAction(Opc, MVT::i32, Expand);
 
-  // setOperationAction(ISD::ADD, MVT::i32, Legal);
+  setOperationAction(ISD::ADD, MVT::i32, Legal);
+  setOperationAction(ISD::MUL, MVT::i32, Legal);
   // ...
   setOperationAction(ISD::LOAD, MVT::i32, Legal);
   setOperationAction(ISD::STORE, MVT::i32, Legal);
@@ -57,10 +59,16 @@ USimTargetLowering::USimTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::UNDEF, MVT::i32, Legal);
 
   setOperationAction(ISD::BR_CC, MVT::i32, Custom);
+
+  setOperationAction(ISD::FRAMEADDR, MVT::i32, Legal);
+  // setOperationAction(ISD::FrameIndex, MVT::i32, Custom);
+  // setOperationAction(ISD::GlobalAddress, MVT::i32, Custom);
 }
 
 const char *USimTargetLowering::getTargetNodeName(unsigned Opcode) const {
   switch (Opcode) {
+  case USimISD::CALL:
+    return "USimISD::CALL";
   case USimISD::RET:
     return "USimISD::RET";
   }
@@ -77,9 +85,206 @@ const char *USimTargetLowering::getTargetNodeName(unsigned Opcode) const {
 //                  Call Calling Convention Implementation
 //===----------------------------------------------------------------------===//
 
+static Align getPrefTypeAlign(EVT VT, SelectionDAG &DAG) {
+  return DAG.getDataLayout().getPrefTypeAlign(
+      VT.getTypeForEVT(*DAG.getContext()));
+}
+
+// TODO: rewrite
 SDValue USimTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
                                       SmallVectorImpl<SDValue> &InVals) const {
-  llvm_unreachable("");
+  SelectionDAG &DAG = CLI.DAG;
+  SDLoc &DL = CLI.DL;
+  SmallVectorImpl<ISD::OutputArg> &Outs = CLI.Outs;
+  SmallVectorImpl<SDValue> &OutVals = CLI.OutVals;
+  SmallVectorImpl<ISD::InputArg> &Ins = CLI.Ins;
+  SDValue Chain = CLI.Chain;
+  SDValue Callee = CLI.Callee;
+  assert(!CLI.IsTailCall);
+  CallingConv::ID CallConv = CLI.CallConv;
+  bool IsVarArg = CLI.IsVarArg;
+  EVT PtrVT = getPointerTy(DAG.getDataLayout());
+
+  MachineFunction &MF = DAG.getMachineFunction();
+
+  // Analyze the operands of the call, assigning locations to each operand.
+  SmallVector<CCValAssign, 16> ArgLocs;
+  CCState CCInfo(CallConv, IsVarArg, MF, ArgLocs, *DAG.getContext());
+  CCInfo.AnalyzeCallOperands(Outs, CC_USim);
+
+  // Get a count of how many bytes are to be pushed on the stack.
+  unsigned NumBytes = CCInfo.getNextStackOffset();
+
+  // Create local copies for byval args
+  SmallVector<SDValue, 8> ByValArgs;
+  for (unsigned i = 0, e = Outs.size(); i != e; ++i) {
+    ISD::ArgFlagsTy Flags = Outs[i].Flags;
+    if (!Flags.isByVal())
+      continue;
+
+    SDValue Arg = OutVals[i];
+    unsigned Size = Flags.getByValSize();
+    Align Alignment = Flags.getNonZeroByValAlign();
+
+    int FI =
+        MF.getFrameInfo().CreateStackObject(Size, Alignment, /*isSS=*/false);
+    SDValue FIPtr = DAG.getFrameIndex(FI, getPointerTy(DAG.getDataLayout()));
+    SDValue SizeNode = DAG.getConstant(Size, DL, MVT::i32);
+
+    Chain = DAG.getMemcpy(Chain, DL, FIPtr, Arg, SizeNode, Alignment,
+                          /*IsVolatile=*/false,
+                          /*AlwaysInline=*/false, false, MachinePointerInfo(),
+                          MachinePointerInfo());
+    ByValArgs.push_back(FIPtr);
+  }
+
+  Chain = DAG.getCALLSEQ_START(Chain, NumBytes, 0, CLI.DL);
+
+  // Copy argument values to their designated locations.
+  SmallVector<std::pair<Register, SDValue>, 8> RegsToPass;
+  SmallVector<SDValue, 8> MemOpChains;
+  SDValue StackPtr;
+  for (unsigned i = 0, j = 0, e = ArgLocs.size(); i != e; ++i) {
+    CCValAssign &VA = ArgLocs[i];
+    SDValue ArgValue = OutVals[i];
+    ISD::ArgFlagsTy Flags = Outs[i].Flags;
+    // Promote the value if needed.
+    // For now, only handle fully promoted and indirect arguments.
+    if (VA.getLocInfo() == CCValAssign::Indirect) {
+      // Store the argument in a stack slot and pass its address.
+      Align StackAlign =
+          std::max(getPrefTypeAlign(Outs[i].ArgVT, DAG),
+                   getPrefTypeAlign(ArgValue.getValueType(), DAG));
+      TypeSize StoredSize = ArgValue.getValueType().getStoreSize();
+      unsigned ArgIndex = Outs[i].OrigArgIndex;
+      unsigned ArgPartOffset = Outs[i].PartOffset;
+      assert(ArgPartOffset == 0);
+      // Calculate the total size to store. We don't have access to what we're
+      // actually storing other than performing the loop and collecting the
+      // info.
+      SmallVector<std::pair<SDValue, SDValue>> Parts;
+      while (i + 1 != e && Outs[i + 1].OrigArgIndex == ArgIndex) {
+        SDValue PartValue = OutVals[i + 1];
+        unsigned PartOffset = Outs[i + 1].PartOffset - ArgPartOffset;
+        SDValue Offset = DAG.getIntPtrConstant(PartOffset, DL);
+        EVT PartVT = PartValue.getValueType();
+        StoredSize += PartVT.getStoreSize();
+        StackAlign = std::max(StackAlign, getPrefTypeAlign(PartVT, DAG));
+        Parts.push_back(std::make_pair(PartValue, Offset));
+        ++i;
+      }
+      SDValue SpillSlot = DAG.CreateStackTemporary(StoredSize, StackAlign);
+      int FI = cast<FrameIndexSDNode>(SpillSlot)->getIndex();
+      MemOpChains.push_back(
+          DAG.getStore(Chain, DL, ArgValue, SpillSlot,
+                       MachinePointerInfo::getFixedStack(MF, FI)));
+      for (const auto &Part : Parts) {
+        SDValue PartValue = Part.first;
+        SDValue PartOffset = Part.second;
+        SDValue Address =
+            DAG.getNode(ISD::ADD, DL, PtrVT, SpillSlot, PartOffset);
+        MemOpChains.push_back(
+            DAG.getStore(Chain, DL, PartValue, Address,
+                         MachinePointerInfo::getFixedStack(MF, FI)));
+      }
+      ArgValue = SpillSlot;
+    } else {
+      assert(VA.getLocInfo() == CCValAssign::Full);
+    }
+
+    // Use local copy if it is a byval arg.
+    if (Flags.isByVal())
+      ArgValue = ByValArgs[j++];
+
+    if (VA.isRegLoc()) {
+      // Queue up the argument copies and emit them at the end.
+      RegsToPass.push_back(std::make_pair(VA.getLocReg(), ArgValue));
+    } else {
+      assert(VA.isMemLoc() && "Argument not register or memory");
+
+      // Work out the address of the stack slot.
+      if (!StackPtr.getNode())
+        StackPtr = DAG.getCopyFromReg(Chain, DL, USim::SP, PtrVT);
+      SDValue Address =
+          DAG.getNode(ISD::ADD, DL, PtrVT, StackPtr,
+                      DAG.getIntPtrConstant(VA.getLocMemOffset(), DL));
+
+      // Emit the store.
+      MemOpChains.push_back(
+          DAG.getStore(Chain, DL, ArgValue, Address, MachinePointerInfo()));
+    }
+  }
+
+  // Join the stores, which are independent of one another.
+  if (!MemOpChains.empty())
+    Chain = DAG.getNode(ISD::TokenFactor, DL, MVT::Other, MemOpChains);
+
+  SDValue Glue;
+
+  // Build a sequence of copy-to-reg nodes, chained and glued together.
+  for (auto &Reg : RegsToPass) {
+    Chain = DAG.getCopyToReg(Chain, DL, Reg.first, Reg.second, Glue);
+    Glue = Chain.getValue(1);
+  }
+
+  // No external symbols support
+  if (GlobalAddressSDNode *S = dyn_cast<GlobalAddressSDNode>(Callee)) {
+    // llvm_unreachable("How do i suppose to lower this?");
+    const GlobalValue *GV = S->getGlobal();
+    assert(getTargetMachine().shouldAssumeDSOLocal(*GV->getParent(), GV));
+    Callee = DAG.getTargetGlobalAddress(GV, DL, PtrVT, 0, 0);
+  }
+
+  // The first call operand is the chain and the second is the target address.
+  SmallVector<SDValue, 8> Ops;
+  Ops.push_back(Chain);
+  Ops.push_back(Callee);
+
+  // Add argument registers to the end of the list so that they are
+  // known live into the call.
+  for (auto &Reg : RegsToPass)
+    Ops.push_back(DAG.getRegister(Reg.first, Reg.second.getValueType()));
+
+  // Add a register mask operand representing the call-preserved registers.
+  const TargetRegisterInfo *TRI = STI.getRegisterInfo();
+  const uint32_t *Mask = TRI->getCallPreservedMask(MF, CallConv);
+  Ops.push_back(DAG.getRegisterMask(Mask));
+
+  // Glue the call to the argument copies, if any.
+  if (Glue.getNode())
+    Ops.push_back(Glue);
+
+  // Emit the call.
+  SDVTList NodeTys = DAG.getVTList(MVT::Other, MVT::Glue);
+
+  Chain = DAG.getNode(USimISD::CALL, DL, NodeTys, Ops);
+  DAG.addNoMergeSiteInfo(Chain.getNode(), CLI.NoMerge);
+  Glue = Chain.getValue(1);
+
+  // Mark the end of the call, which is glued to the call itself.
+  Chain = DAG.getCALLSEQ_END(Chain, DAG.getConstant(NumBytes, DL, PtrVT, true),
+                             DAG.getConstant(0, DL, PtrVT, true), Glue, DL);
+  Glue = Chain.getValue(1);
+
+  // Assign locations to each value returned by this call.
+  SmallVector<CCValAssign, 16> RVLocs;
+  CCState RetCCInfo(CallConv, IsVarArg, MF, RVLocs, *DAG.getContext());
+  RetCCInfo.AnalyzeCallResult(Ins, RetCC_USim);
+
+  // Copy all of the result registers out of their specified physreg.
+  for (auto &VA : RVLocs) {
+    // Copy the value out
+    SDValue RetValue =
+        DAG.getCopyFromReg(Chain, DL, VA.getLocReg(), VA.getLocVT(), Glue);
+    // Glue the RetValue to the end of the call sequence
+    Chain = RetValue.getValue(1);
+    Glue = RetValue.getValue(2);
+
+    assert(VA.getLocInfo() == CCValAssign::Full);
+    InVals.push_back(RetValue);
+  }
+
+  return Chain;
 }
 
 //===----------------------------------------------------------------------===//
@@ -441,11 +646,28 @@ SDValue USimTargetLowering::lowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
                      LHS, RHS, TargetCC, Block);
 }
 
+SDValue USimTargetLowering::lowerFRAMEADDR(SDValue Op,
+                                           SelectionDAG &DAG) const {
+  const USimRegisterInfo &RI = *STI.getRegisterInfo();
+  MachineFunction &MF = DAG.getMachineFunction();
+  MachineFrameInfo &MFI = MF.getFrameInfo();
+  MFI.setFrameAddressIsTaken(true);
+  Register FrameReg = RI.getFrameRegister(MF);
+  EVT VT = Op.getValueType();
+  SDLoc DL(Op);
+  SDValue FrameAddr = DAG.getCopyFromReg(DAG.getEntryNode(), DL, FrameReg, VT);
+  // Only for current frame
+  assert(cast<ConstantSDNode>(Op.getOperand(0))->getZExtValue() == 0);
+  return FrameAddr;
+}
+
 SDValue USimTargetLowering::LowerOperation(SDValue Op,
                                            SelectionDAG &DAG) const {
   switch (Op->getOpcode()) {
   case ISD::BR_CC:
     return lowerBR_CC(Op, DAG);
+  case ISD::FRAMEADDR:
+    return lowerFRAMEADDR(Op, DAG);
   default:
     llvm_unreachable("");
   }

@@ -243,7 +243,6 @@ void USimFrameLowering::processFunctionBeforeFrameFinalized(
 MachineBasicBlock::iterator USimFrameLowering::eliminateCallFramePseudoInstr(
     MachineFunction &MF, MachineBasicBlock &MBB,
     MachineBasicBlock::iterator MI) const {
-  llvm_unreachable("");
   Register SPReg = USim::SP;
   DebugLoc DL = MI->getDebugLoc();
 

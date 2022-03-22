@@ -16,6 +16,7 @@ enum NodeType : unsigned {
   // Start the numbering where the builtin ops and target ops leave off.
   FIRST_NUMBER = ISD::BUILTIN_OP_END,
   RET,
+  CALL,
   BR_CC,
 };
 
@@ -70,6 +71,7 @@ private:
   bool mayBeEmittedAsTailCall(const CallInst *CI) const override;
 
   SDValue lowerBR_CC(SDValue Op, SelectionDAG &DAG) const;
+  SDValue lowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const;
 };
 
 } // end namespace llvm

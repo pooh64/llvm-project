@@ -1,3 +1,4 @@
+#include "MCTargetDesc/USimMCTargetDesc.h"
 #include "USim.h"
 #include "USimTargetMachine.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
@@ -19,6 +20,8 @@
 #include "llvm/Support/raw_ostream.h"
 
 using namespace llvm;
+
+#define DEBUG_TYPE "usim-isel"
 
 namespace {
 
@@ -65,8 +68,6 @@ bool USimDAGToDAGISel::SelectAddrFI(SDValue Addr, SDValue &Base) {
 }
 
 bool USimDAGToDAGISel::SelectBaseAddr(SDValue Addr, SDValue &Base) {
-  // If this is FrameIndex, select it directly. Otherwise just let it get
-  // selected to a register independently.
   if (auto *FIN = dyn_cast<FrameIndexSDNode>(Addr))
     Base = CurDAG->getTargetFrameIndex(FIN->getIndex(), MVT::i32);
   else
@@ -74,8 +75,24 @@ bool USimDAGToDAGISel::SelectBaseAddr(SDValue Addr, SDValue &Base) {
   return true;
 }
 
-void USimDAGToDAGISel::Select(SDNode *N) {
-  // switch (N->getOpcode()) {
-  // }
-  SelectCode(N);
+void USimDAGToDAGISel::Select(SDNode *Node) {
+  if (Node->isMachineOpcode()) {
+    LLVM_DEBUG(dbgs() << "== "; Node->dump(CurDAG); dbgs() << "\n");
+    Node->setNodeId(-1);
+    return;
+  }
+  unsigned Opcode = Node->getOpcode();
+  SDLoc DL(Node);
+  MVT VT = Node->getSimpleValueType(0);
+
+  switch (Opcode) {
+  case ISD::FrameIndex: {
+    SDValue Imm = CurDAG->getTargetConstant(0, DL, MVT::i32);
+    int FI = cast<FrameIndexSDNode>(Node)->getIndex();
+    SDValue TFI = CurDAG->getTargetFrameIndex(FI, VT);
+    ReplaceNode(Node, CurDAG->getMachineNode(USim::ADDI, DL, VT, TFI, Imm));
+    return;
+  }
+  }
+  SelectCode(Node);
 }

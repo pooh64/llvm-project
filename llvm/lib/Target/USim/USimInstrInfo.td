@@ -8,12 +8,13 @@
 // USim profiles and nodes
 //===----------------------------------------------------------------------===//
 
+def SDT_USimCall         : SDTypeProfile<0, -1, [SDTCisVT<0, i32>]>;
 def SDT_USimCallSeqStart : SDCallSeqStart<[ SDTCisVT<0, i32>,
-                                           SDTCisVT<1, i32> ]>;
+                                            SDTCisVT<1, i32> ]>;
 def SDT_USimCallSeqEnd   : SDCallSeqEnd<[ SDTCisVT<0, i32>,
-                                         SDTCisVT<1, i32> ]>;
+                                          SDTCisVT<1, i32> ]>;
 
-def SDT_USimBrCC : SDTypeProfile<0, 4, [SDTCisSameAs<0, 1>,
+def SDT_USimBrCC : SDTypeProfile<0, 4, [ SDTCisSameAs<0, 1>,
                                          SDTCisVT<2, OtherVT>,
                                          SDTCisVT<3, OtherVT>]>;
 
@@ -25,6 +26,10 @@ def callseq_end   : SDNode<"ISD::CALLSEQ_END",   SDT_USimCallSeqEnd,
 
 def usim_ret      : SDNode<"USimISD::RET", SDTNone,
                             [SDNPHasChain, SDNPOptInGlue, SDNPVariadic]>;
+
+def usim_call     : SDNode<"USimISD::CALL", SDT_USimCall,
+                            [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue,
+                             SDNPVariadic]>;
 
 def usim_brcc     : SDNode<"USimISD::BR_CC", SDT_USimBrCC,
                             [SDNPHasChain]>;
@@ -112,6 +117,21 @@ def btarget16 : Operand<OtherVT> {
   let OperandType = "OPERAND_PCREL";
 }
 
+// TODO: sym methods
+def ctarget16 : Operand<i32> {
+  let ParserMatchClass = SImmAsmOperand<16>;
+  let PrintMethod = "printBranchOperand";
+  let EncoderMethod = "getImmOpValue";
+  let DecoderMethod = "decodeSImmOperand<16>";
+  let MCOperandPredicate = [{
+    int64_t Imm;
+    if (MCOp.evaluateAsConstantImm(Imm))
+      return isInt<16>(Imm);
+    return MCOp.isBareSymbolRef();
+  }];
+  let OperandType = "OPERAND_PCREL";
+}
+
 def LI16 : SDNodeXForm<imm, [{
   return CurDAG->getTargetConstant((uint64_t)N->getZExtValue() & 0xffff,
                                    SDLoc(N), MVT::i32);
@@ -186,24 +206,30 @@ def : PatBcc<SETUGT, BGTU>;
 
 let hasSideEffects = 0, mayLoad = 0, mayStore = 0, isBarrier = 1, isBranch = 1, isTerminator = 1 in
 def B : USimInst<0x0, (outs), (ins btarget16:$imm16),
-                   "b\t $imm16",
-                   [(br bb:$imm16)]>;
+                 "b\t$imm16",
+                 [(br bb:$imm16)]>;
 
 // TODO: flags
 let hasSideEffects = 0, mayLoad = 0, mayStore = 0, isCall = 1, isBranch = 1, isTerminator = 1 in
 def BR : USimInst<0x0, (outs), (ins GPR:$rs1),
-                  "br\t $rs1", [(brind GPR:$rs1)]>;
+                  "br\t$rs1", [(brind GPR:$rs1)]>;
+
+// TODO: flags
+let hasSideEffects = 0, mayLoad = 0, mayStore = 0, isCall = 1, isBranch = 1, isTerminator = 1 in
+def BL : USimInst<0x0, (outs GPR:$rd), (ins ctarget16:$imm16),
+                  "bl\t$rd, $imm16", []>;
+
+// TODO: BLR
 
 let isBarrier = 1, isReturn = 1, isTerminator = 1 in
 def PseudoRET : USimPseudoInst<(outs), (ins), "# PseudoRET", [(usim_ret)]>,
                 PseudoInstExpansion<(BR R1)>;
 
-// TODO: flags, call op
-let hasSideEffects = 0, mayLoad = 0, mayStore = 0, isCall = 1, isBranch = 1, isTerminator = 1 in
-def BL : USimInst<0x0, (outs GPR:$rd), (ins btarget16:$imm16),
-                  "bl\t $rd, $imm16", []>;
+let isCall = 1, Defs = [R1], isCodeGenOnly = 0 in
+def PseudoCALL : USimPseudoInst<(outs), (ins ctarget16:$func), "# PseudoCALL", []>,
+                 PseudoInstExpansion<(BL R1, ctarget16:$func)>;
 
-// TODO: BRL
+def : Pat<(usim_call tglobaladdr:$func), (PseudoCALL tglobaladdr:$func)>;
 
 // movli
 let isAsCheapAsAMove = 1, isCodeGenOnly = 1, isReMaterializable = 1 in
@@ -264,6 +290,13 @@ def ADDI : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs1, simm16:$imm),
                     [(set GPR:$rd, (add GPR:$rs1, simm16:$imm))]>;
 def : PatGprImm<add, ADDI, simm16>;
 
+// mul
+let isAsCheapAsAMove = 1 in
+def MUL : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs2, GPR:$rs1),
+                   "mul\t$rd, $rs1, $rs2",
+                   [(set GPR:$rd, (mul GPR:$rs1, GPR:$rs2))]>;
+def : PatGprGpr<mul, MUL>;
+
 // ori
 let isAsCheapAsAMove = 1 in
 def ORI : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs1, uimm16:$imm),
@@ -279,3 +312,8 @@ def : PatGprImm<add, ADDI, uimm16>;
 def : Pat<(i32 i32li16u:$imm), (MOVLI imm:$imm)>;
 // i32 imm
 def : Pat<(i32 imm:$imm), (ORI (MOVHI (HI16 imm:$imm)), (LI16 imm:$imm))>;
+
+def : Pat<(add (i32 AddrFI:$rs), simm16:$imm16),
+          (ADDI (i32 AddrFI:$rs), simm16:$imm16)>;
+def : Pat<(IsOrAdd (i32 AddrFI:$rs), simm16:$imm16),
+          (ADDI (i32 AddrFI:$rs), simm16:$imm16)>;

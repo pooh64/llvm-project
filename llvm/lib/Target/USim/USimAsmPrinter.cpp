@@ -38,6 +38,11 @@ public:
 
   void emitInstruction(const MachineInstr *MI) override;
   bool runOnMachineFunction(MachineFunction &MF) override;
+
+  // Used in pseudo lowerings
+  bool lowerOperand(const MachineOperand &MO, MCOperand &MCOp) const {
+    return LowerUSimMachineOperandToMCOperand(MO, MCOp, *this);
+  }
 };
 
 } // end anonymous namespace
