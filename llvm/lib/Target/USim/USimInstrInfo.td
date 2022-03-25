@@ -182,6 +182,16 @@ class BranchCC<bits<8> op, string opcodestr>
     : USimInst<op, (outs), (ins GPR:$rs1, GPR:$rs2, btarget16:$imm16),
               !strconcat(opcodestr, "\t$rs1, $rs2"), []>;
 
+let hasSideEffects = 0, mayLoad = 0, mayStore = 0 in
+class ArithmRR<bits<8> op, string opcodestr>
+    : USimInst<op, (outs GPR:$rd), (ins GPR:$rs1, GPR:$rs2),
+              !strconcat(opcodestr, "\t$rd, $rs1, $rs2"), []>;
+
+let hasSideEffects = 0, mayLoad = 0, mayStore = 0 in
+class ArithmRI<bits<8> op, string opcodestr>
+    : USimInst<op, (outs GPR:$rd), (ins GPR:$rs1, simm16:$imm),
+              !strconcat(opcodestr, "\t$rd, $rs1, $imm"), []>;
+
 //===----------------------------------------------------------------------===//
 // Instruction definition
 //===----------------------------------------------------------------------===//
@@ -189,6 +199,38 @@ class BranchCC<bits<8> op, string opcodestr>
 //===----------------------------------------------------------------------===//
 // USim Instructions
 //===----------------------------------------------------------------------===//
+
+// TODO: check B* flags
+let hasSideEffects = 0, mayLoad = 0, mayStore = 0, isBarrier = 1, isBranch = 1, isTerminator = 1 in
+def B : USimInst<0x0, (outs), (ins btarget16:$imm16), "b\t$imm16",
+                 [(br bb:$imm16)]>;
+
+let hasSideEffects = 0, mayLoad = 0, mayStore = 0, isCall = 1, isBranch = 1, isTerminator = 1 in
+def BR : USimInst<0x0, (outs), (ins GPR:$rs1), "br\t$rs1",
+                  [(brind GPR:$rs1)]>;
+
+let hasSideEffects = 0, mayLoad = 0, mayStore = 0, isCall = 1, isBranch = 1, isTerminator = 1 in
+def BL : USimInst<0x0, (outs GPR:$rd), (ins ctarget16:$imm16), "bl\t$rd, $imm16",
+                  []>;
+
+let hasSideEffects = 0, mayLoad = 0, mayStore = 0, isCall = 1, isBranch = 1, isTerminator = 1 in
+def BLR : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs1),
+                  "blr\t$rd, $rs1", []>;
+
+let isBarrier = 1, isReturn = 1, isTerminator = 1 in
+def PseudoRET : USimPseudoInst<(outs), (ins), "# PseudoRET",
+                [(usim_ret)]>,
+                PseudoInstExpansion<(BR R1)>;
+
+let isCall = 1, Defs = [R1] in
+def PseudoCALL : USimPseudoInst<(outs), (ins ctarget16:$func), "# PseudoCALL",
+                 [(usim_call tglobaladdr:$func)]>,
+                 PseudoInstExpansion<(BL R1, ctarget16:$func)>;
+
+let isCall = 1, Defs = [R1] in
+def PseudoCALLInd : USimPseudoInst<(outs), (ins GPR:$rs1), "# PseudoCALLInd",
+                    [(usim_call GPR:$rs1)]>,
+                    PseudoInstExpansion<(BLR R1, GPR:$rs1)>;
 
 def BEQ  : BranchCC<0x0, "beq">;
 def BNE  : BranchCC<0x0, "bne">;
@@ -204,33 +246,6 @@ def : PatBcc<SETGT, BGT>;
 def : PatBcc<SETULE, BLEU>;
 def : PatBcc<SETUGT, BGTU>;
 
-let hasSideEffects = 0, mayLoad = 0, mayStore = 0, isBarrier = 1, isBranch = 1, isTerminator = 1 in
-def B : USimInst<0x0, (outs), (ins btarget16:$imm16),
-                 "b\t$imm16",
-                 [(br bb:$imm16)]>;
-
-// TODO: flags
-let hasSideEffects = 0, mayLoad = 0, mayStore = 0, isCall = 1, isBranch = 1, isTerminator = 1 in
-def BR : USimInst<0x0, (outs), (ins GPR:$rs1),
-                  "br\t$rs1", [(brind GPR:$rs1)]>;
-
-// TODO: flags
-let hasSideEffects = 0, mayLoad = 0, mayStore = 0, isCall = 1, isBranch = 1, isTerminator = 1 in
-def BL : USimInst<0x0, (outs GPR:$rd), (ins ctarget16:$imm16),
-                  "bl\t$rd, $imm16", []>;
-
-// TODO: BLR
-
-let isBarrier = 1, isReturn = 1, isTerminator = 1 in
-def PseudoRET : USimPseudoInst<(outs), (ins), "# PseudoRET", [(usim_ret)]>,
-                PseudoInstExpansion<(BR R1)>;
-
-let isCall = 1, Defs = [R1], isCodeGenOnly = 0 in
-def PseudoCALL : USimPseudoInst<(outs), (ins ctarget16:$func), "# PseudoCALL", []>,
-                 PseudoInstExpansion<(BL R1, ctarget16:$func)>;
-
-def : Pat<(usim_call tglobaladdr:$func), (PseudoCALL tglobaladdr:$func)>;
-
 // movli
 let isAsCheapAsAMove = 1, isCodeGenOnly = 1, isReMaterializable = 1 in
 def MOVLI : USimInst<0x0, (outs GPR:$rd), (ins i32li16u:$imm),
@@ -242,16 +257,6 @@ let isAsCheapAsAMove = 1, isCodeGenOnly = 1, isReMaterializable = 1 in
 def MOVHI : USimInst<0x0, (outs GPR:$rd), (ins i32hi16:$imm),
                      "movhi\t$rd, $imm",
                      [(set GPR:$rd, i32hi16:$imm)]>;
-
-// mov TODO: remove
-// let isAsCheapAsAMove = 1, isCodeGenOnly = 1, isReMaterializable = 1 in
-// def MOV : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs1),
-//                   "mov\t$rd, $rs1",
-//                   // [(set GPR:$rd, GPR:$rs1)]>; // kills isel
-//                   []>;
-
-// nop TODO: remove
-// def NOP   : USimInst<0x0, (outs), (ins), "nop", []>;
 
 // sti, but not SubtargetInfo!
 let hasSideEffects = 0, mayLoad = 0, mayStore = 1 in
@@ -276,33 +281,17 @@ def : Pat<(i32 (load (add BaseAddr:$rs1, simm16:$imm))),
 def : Pat<(i32 (load (IsOrAdd AddrFI:$rs1, simm16:$imm))),
           (LDI AddrFI:$rs1, simm16:$imm)>;
 
-// add
-let isAsCheapAsAMove = 1 in
-def ADD : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs2, GPR:$rs1),
-                   "add\t$rd, $rs1, $rs2",
-                   [(set GPR:$rd, (add GPR:$rs1, GPR:$rs2))]>;
-def : PatGprGpr<add, ADD>;
+def ADD : ArithmRR<0x0, "add">;  def : PatGprGpr<add,  ADD>;
+def SUB : ArithmRR<0x0, "sub">;  def : PatGprGpr<sub,  SUB>;
+def MUL : ArithmRR<0x0, "mul">;  def : PatGprGpr<mul,  MUL>;
+def DIV : ArithmRR<0x0, "div">;  def : PatGprGpr<sdiv, DIV>;
+def OR  : ArithmRR<0x0, "or">;   def : PatGprGpr<or,   OR>;
+def AND : ArithmRR<0x0, "and">;  def : PatGprGpr<and,  AND>;
+def XOR : ArithmRR<0x0, "xor">;  def : PatGprGpr<xor,  XOR>;
 
-// addi
-let isAsCheapAsAMove = 1 in
-def ADDI : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs1, simm16:$imm),
-                    "addi\t$rd, $rs1, $imm",
-                    [(set GPR:$rd, (add GPR:$rs1, simm16:$imm))]>;
-def : PatGprImm<add, ADDI, simm16>;
-
-// mul
-let isAsCheapAsAMove = 1 in
-def MUL : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs2, GPR:$rs1),
-                   "mul\t$rd, $rs1, $rs2",
-                   [(set GPR:$rd, (mul GPR:$rs1, GPR:$rs2))]>;
-def : PatGprGpr<mul, MUL>;
-
-// ori
-let isAsCheapAsAMove = 1 in
-def ORI : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs1, uimm16:$imm),
-                   "ori\t$rd, $rs1, $imm",
-                   [(set GPR:$rd, (or GPR:$rs1, uimm16:$imm))]>;
-def : PatGprImm<add, ADDI, uimm16>;
+def ADDI : ArithmRI<0x0, "addi">; def : PatGprImm<add, ADDI, simm16>;
+def MULI : ArithmRI<0x0, "muli">; def : PatGprImm<mul, MULI, simm16>;
+def ORI  : ArithmRI<0x0, "ori">;  def : PatGprImm<mul, ORI,  simm16>;
 
 //===----------------------------------------------------------------------===//
 // USim Other patterns
@@ -317,3 +306,14 @@ def : Pat<(add (i32 AddrFI:$rs), simm16:$imm16),
           (ADDI (i32 AddrFI:$rs), simm16:$imm16)>;
 def : Pat<(IsOrAdd (i32 AddrFI:$rs), simm16:$imm16),
           (ADDI (i32 AddrFI:$rs), simm16:$imm16)>;
+
+
+// mov TODO: remove
+// let isAsCheapAsAMove = 1, isCodeGenOnly = 1, isReMaterializable = 1 in
+// def MOV : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs1),
+//                   "mov\t$rd, $rs1",
+//                   // [(set GPR:$rd, GPR:$rs1)]>; // kills isel
+//                   []>;
+
+// nop TODO: remove
+// def NOP   : USimInst<0x0, (outs), (ins), "nop", []>;
