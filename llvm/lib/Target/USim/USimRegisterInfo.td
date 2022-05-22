@@ -31,11 +31,29 @@ let Namespace = "USim" in {
   def R13   : USimReg<13, "r13">,   DwarfRegNum<[13]>; // t0
   def R14   : USimReg<14, "r14">,   DwarfRegNum<[14]>; // t1
   def R15   : USimReg<15, "r15">,   DwarfRegNum<[15]>; // t2
+
+  def F0    : USimReg<0,  "f0">,    DwarfRegNum<[16]>;
+  def F1    : USimReg<1,  "f1">,    DwarfRegNum<[17]>;
+  def F2    : USimReg<2,  "f2">,    DwarfRegNum<[18]>;
+  def F3    : USimReg<3,  "f3">,    DwarfRegNum<[19]>;
+  def F4    : USimReg<4,  "f4">,    DwarfRegNum<[20]>;
+  def F5    : USimReg<5,  "f5">,    DwarfRegNum<[21]>;
+  def F6    : USimReg<6,  "f6">,    DwarfRegNum<[22]>;
+  def F7    : USimReg<7,  "f7">,    DwarfRegNum<[23]>;
+  def F8    : USimReg<8,  "f8">,    DwarfRegNum<[24]>;
+  def F9    : USimReg<9,  "f9">,    DwarfRegNum<[25]>;
+  def F10   : USimReg<10, "f10">,   DwarfRegNum<[26]>;
+  def F11   : USimReg<11, "f11">,   DwarfRegNum<[27]>;
+  def F12   : USimReg<12, "f12">,   DwarfRegNum<[28]>;
+  def F13   : USimReg<13, "f13">,   DwarfRegNum<[29]>;
+  def F14   : USimReg<14, "f14">,   DwarfRegNum<[30]>;
+  def F15   : USimReg<15, "f15">,   DwarfRegNum<[31]>;
 }
 
 //===----------------------------------------------------------------------===//
 //@Register Classes
 //===----------------------------------------------------------------------===//
 
-def GPR : RegisterClass<"USim", [i32], 32, (add
-  R0, R1, R2, R3, R4, R5, R6, R7, R8, R9, R10, R11, R12, R13, R14, R15)>;
+def GPR : RegisterClass<"USim", [i32], 32, (sequence "R%u", 0, 15)>;
+
+def FPR : RegisterClass<"USim", [f32], 32, (sequence "F%u", 0, 15)>;

@@ -144,14 +144,17 @@ def HI16 : SDNodeXForm<imm, [{
 
 // def LiImm16AsmOperand : AsmOperandClass { let Name = "LiImm16"; }
 def i32li16u : Operand<i32>, PatLeaf<(i32 imm), [{
-    return ((N->getZExtValue() & 0xFFFFUL) == N->getZExtValue());}], LI16> {
+    return ((uint64_t)(N->getZExtValue() & 0xFFFFUL) == N->getZExtValue());}], LI16> {
+  // let ParserMatchClass = LiImm16AsmOperand;
+}
+
+def i32li16s : Operand<i32>, PatLeaf<(i32 imm), [{
+    return ((int64_t)(N->getSExtValue() & 0xFFFFUL) == N->getSExtValue());}], LI16> {
   // let ParserMatchClass = LiImm16AsmOperand;
 }
 
 // def HiImm16AsmOperand : AsmOperandClass { let Name = "HiImm16"; }
 def i32hi16 : Operand<i32>, PatLeaf<(i32 imm), [{
-    // i32hi16 predicate - true if the 32-bit immediate has only leftmost 16
-    // bits set.
     return ((N->getZExtValue() & 0xFFFF0000UL) == N->getZExtValue());}], HI16> {
   // let ParserMatchClass = HiImm16AsmOperand;
   // let PrintMethod = "printHi16ImmOperand";
@@ -180,7 +183,7 @@ class PatBcc<CondCode Cond, USimInst Inst>
 let hasSideEffects = 0, mayLoad = 0, mayStore = 0, isBranch = 1, isTerminator = 1 in
 class BranchCC<bits<8> op, string opcodestr>
     : USimInst<op, (outs), (ins GPR:$rs1, GPR:$rs2, btarget16:$imm16),
-              !strconcat(opcodestr, "\t$rs1, $rs2"), []>;
+              !strconcat(opcodestr, "\t$rs1, $rs2, $imm16"), []>;
 
 let hasSideEffects = 0, mayLoad = 0, mayStore = 0 in
 class ArithmRR<bits<8> op, string opcodestr>
@@ -191,7 +194,12 @@ let hasSideEffects = 0, mayLoad = 0, mayStore = 0 in
 class ArithmRI<bits<8> op, string opcodestr>
     : USimInst<op, (outs GPR:$rd), (ins GPR:$rs1, simm16:$imm),
               !strconcat(opcodestr, "\t$rd, $rs1, $imm"), []>;
-
+/*
+let hasSideEffects = 0, mayLoad = 0, mayStore = 0 in
+class FPArithmR<bits<8> op, RegisterClass rdt, RegisterClass rs1t, string opcodestr>
+    : USimInst<op, (outs rdt:$rd), (ins rs1t:$rs1),
+              !strconcat(opcodestr, "\t$rd, $rs1"), []>;
+*/
 //===----------------------------------------------------------------------===//
 // Instruction definition
 //===----------------------------------------------------------------------===//
@@ -248,9 +256,14 @@ def : PatBcc<SETUGT, BGTU>;
 
 // movli
 let isAsCheapAsAMove = 1, isCodeGenOnly = 1, isReMaterializable = 1 in
-def MOVLI : USimInst<0x0, (outs GPR:$rd), (ins i32li16u:$imm),
-                     "movli\t$rd, $imm",
+def MOVLIu : USimInst<0x0, (outs GPR:$rd), (ins i32li16u:$imm),
+                     "movliu\t$rd, $imm",
                      [(set GPR:$rd, i32li16u:$imm)]>;
+
+let isAsCheapAsAMove = 1, isCodeGenOnly = 1, isReMaterializable = 1 in
+def MOVLIs : USimInst<0x0, (outs GPR:$rd), (ins i32li16s:$imm),
+                     "movlis\t$rd, $imm",
+                     [(set GPR:$rd, i32li16s:$imm)]>;
 
 // movhi
 let isAsCheapAsAMove = 1, isCodeGenOnly = 1, isReMaterializable = 1 in
@@ -293,12 +306,20 @@ def ADDI : ArithmRI<0x0, "addi">; def : PatGprImm<add, ADDI, simm16>;
 def MULI : ArithmRI<0x0, "muli">; def : PatGprImm<mul, MULI, simm16>;
 def ORI  : ArithmRI<0x0, "ori">;  def : PatGprImm<mul, ORI,  simm16>;
 
+/*
+def FCVTWS : FPArithmR<0x0, GPR, FPR, "fcvtws">;
+def : Pat<(any_fp_to_sint (f32 FPR:$rs1)), (FCVTWS $rs1)>;
+
+def FCVTSW : FPArithmR<0x0, FPR, GPR, "fcvtsw">;
+def : Pat<(any_sint_to_fp (i32 GPR:$rs1)), (FCVTSW $rs1)>;
+*/
 //===----------------------------------------------------------------------===//
 // USim Other patterns
 //===----------------------------------------------------------------------===//
 
 // i16 imm
-def : Pat<(i32 i32li16u:$imm), (MOVLI imm:$imm)>;
+def : Pat<(i32 i32li16u:$imm), (MOVLIu imm:$imm)>;
+def : Pat<(i32 i32li16s:$imm), (MOVLIs imm:$imm)>;
 // i32 imm
 def : Pat<(i32 imm:$imm), (ORI (MOVHI (HI16 imm:$imm)), (LI16 imm:$imm))>;
 
@@ -307,13 +328,3 @@ def : Pat<(add (i32 AddrFI:$rs), simm16:$imm16),
 def : Pat<(IsOrAdd (i32 AddrFI:$rs), simm16:$imm16),
           (ADDI (i32 AddrFI:$rs), simm16:$imm16)>;
 
-
-// mov TODO: remove
-// let isAsCheapAsAMove = 1, isCodeGenOnly = 1, isReMaterializable = 1 in
-// def MOV : USimInst<0x0, (outs GPR:$rd), (ins GPR:$rs1),
-//                   "mov\t$rd, $rs1",
-//                   // [(set GPR:$rd, GPR:$rs1)]>; // kills isel
-//                   []>;
-
-// nop TODO: remove
-// def NOP   : USimInst<0x0, (outs), (ins), "nop", []>;

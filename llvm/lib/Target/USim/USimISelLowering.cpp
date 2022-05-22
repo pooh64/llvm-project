@@ -623,6 +623,8 @@ static void translateSetCCForBranch(const SDLoc &DL, SDValue &LHS, SDValue &RHS,
     break;
   case ISD::SETLT:
   case ISD::SETGE:
+  case ISD::SETULT:
+  case ISD::SETUGE:
     CC = ISD::getSetCCSwappedOperands(CC);
     std::swap(LHS, RHS);
     break;
