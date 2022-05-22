@@ -24,7 +24,7 @@ using namespace llvm;
 #define GET_REGINFO_TARGET_DESC
 #include "USimGenRegisterInfo.inc"
 
-USimRegisterInfo::USimRegisterInfo() : USimGenRegisterInfo(USim::R1) {}
+USimRegisterInfo::USimRegisterInfo() : USimGenRegisterInfo(USim::RA) {}
 
 #if 0
 bool USimRegisterInfo::needsFrameMoves(const MachineFunction &MF) {
@@ -39,11 +39,18 @@ USimRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
 
 // TODO: check cconv
 BitVector USimRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
+  USimFrameLowering const *TFI = getFrameLowering(MF);
+
   BitVector Reserved(getNumRegs());
-  Reserved.set(USim::R0);
-  Reserved.set(USim::R1);
-  Reserved.set(USim::R2);
-  Reserved.set(USim::R3);
+  Reserved.set(USim::GP);
+  Reserved.set(USim::SP);
+
+  if (TFI->hasFP(MF)) {
+    Reserved.set(USim::FP);
+  }
+  if (TFI->hasBP(MF)) {
+    Reserved.set(USim::BP);
+  }
   return Reserved;
 }
 

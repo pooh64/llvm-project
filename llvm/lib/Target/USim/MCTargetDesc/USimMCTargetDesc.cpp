@@ -1,5 +1,6 @@
 #include "USimMCTargetDesc.h"
 #include "TargetInfo/USimTargetInfo.h"
+#include "USim.h"
 #include "USimInfo.h"
 #include "USimInstPrinter.h"
 #include "USimMCAsmInfo.h"
@@ -31,7 +32,7 @@ static MCInstrInfo *createUSimMCInstrInfo() {
 
 static MCRegisterInfo *createUSimMCRegisterInfo(const Triple &TT) {
   auto *X = new MCRegisterInfo();
-  InitUSimMCRegisterInfo(X, USim::R1);
+  InitUSimMCRegisterInfo(X, USim::RA);
   return X;
 }
 
