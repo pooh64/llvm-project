@@ -108,7 +108,7 @@ SDValue USimTargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   SmallVectorImpl<ISD::InputArg> &Ins = CLI.Ins;
   SDValue Chain = CLI.Chain;
   SDValue Callee = CLI.Callee;
-  // assert(!CLI.IsTailCall); // tolerate
+  CLI.IsTailCall = false; // assert(!CLI.IsTailCall); // tolerate
   CallingConv::ID CallConv = CLI.CallConv;
   bool IsVarArg = CLI.IsVarArg;
   EVT PtrVT = getPointerTy(DAG.getDataLayout());
