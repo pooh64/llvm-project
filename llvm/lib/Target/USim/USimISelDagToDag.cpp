@@ -93,6 +93,32 @@ void USimDAGToDAGISel::Select(SDNode *Node) {
     ReplaceNode(Node, CurDAG->getMachineNode(USim::ADDI, DL, VT, TFI, Imm));
     return;
   }
+  case ISD::Constant: {
+    auto *ConstNode = cast<ConstantSDNode>(Node);
+    assert(VT == MVT::i32);
+    int64_t Imm = ConstNode->getSExtValue();
+    SDNode *Res = nullptr;
+    if (isUInt<16>(Imm)) {
+      SDValue SDImm = CurDAG->getTargetConstant(Imm, DL, MVT::i32);
+      Res = CurDAG->getMachineNode(USim::MOVLIu, DL, VT, SDImm);
+    } else if (isInt<16>(Imm)) {
+      SDValue SDImm = CurDAG->getTargetConstant(Imm, DL, MVT::i32);
+      Res = CurDAG->getMachineNode(USim::MOVLIs, DL, VT, SDImm);
+    } else {
+      // (h' << 16) + (l >> 15) * (-1 << 16) + l
+      // ((h' + (l >> 15) * (-1 << 16)) + l
+      // h + l,  h' = h - (l >> 15) * (-1 << 16)
+      uint16_t ImmLi = (uint64_t)Imm & 0xffff;
+      uint16_t ImmHi = ((uint64_t)Imm >> 16) - ((ImmLi >> 15) ? 0xffff : 0);
+      SDValue SDImmLi = CurDAG->getTargetConstant(ImmLi, DL, MVT::i32);
+      SDValue SDImmHi = CurDAG->getTargetConstant(ImmHi, DL, MVT::i32);
+      Res = CurDAG->getMachineNode(USim::MOVHI, DL, VT, SDImmHi);
+      Res =
+          CurDAG->getMachineNode(USim::ADDI, DL, VT, SDValue(Res, 0), SDImmLi);
+    }
+    ReplaceNode(Node, Res);
+    return;
+  }
   }
   SelectCode(Node);
 }

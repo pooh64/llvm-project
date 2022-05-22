@@ -297,14 +297,23 @@ def : Pat<(i32 (load (IsOrAdd AddrFI:$rs1, simm16:$imm))),
 def ADD : ArithmRR<0x0, "add">;  def : PatGprGpr<add,  ADD>;
 def SUB : ArithmRR<0x0, "sub">;  def : PatGprGpr<sub,  SUB>;
 def MUL : ArithmRR<0x0, "mul">;  def : PatGprGpr<mul,  MUL>;
-def DIV : ArithmRR<0x0, "div">;  def : PatGprGpr<sdiv, DIV>;
+def DIVS : ArithmRR<0x0, "divs">;  def : PatGprGpr<sdiv, DIVS>;
+def DIVU : ArithmRR<0x0, "divu">;  def : PatGprGpr<udiv, DIVU>;
+def REM :  ArithmRR<0x0, "rems">;  def : PatGprGpr<srem, REM>;
+def REMU : ArithmRR<0x0, "remu">;  def : PatGprGpr<urem, REMU>;
 def OR  : ArithmRR<0x0, "or">;   def : PatGprGpr<or,   OR>;
 def AND : ArithmRR<0x0, "and">;  def : PatGprGpr<and,  AND>;
 def XOR : ArithmRR<0x0, "xor">;  def : PatGprGpr<xor,  XOR>;
 
 def ADDI : ArithmRI<0x0, "addi">; def : PatGprImm<add, ADDI, simm16>;
 def MULI : ArithmRI<0x0, "muli">; def : PatGprImm<mul, MULI, simm16>;
-def ORI  : ArithmRI<0x0, "ori">;  def : PatGprImm<mul, ORI,  simm16>;
+def DIVIS : ArithmRI<0x0, "divis">; def : PatGprImm<sdiv, DIVIS, simm16>;
+def DIVIU : ArithmRI<0x0, "diviu">; def : PatGprImm<udiv, DIVIU, simm16>;
+def REMIS : ArithmRI<0x0, "remis">; def : PatGprImm<srem, REMIS, simm16>;
+def REMIU : ArithmRI<0x0, "remiu">; def : PatGprImm<urem, REMIU, simm16>;
+def ORI  : ArithmRI<0x0, "ori">;  def : PatGprImm<or, ORI, simm16>;
+def ANDI  : ArithmRI<0x0, "andi">;  def : PatGprImm<and, ANDI, simm16>;
+def XORI  : ArithmRI<0x0, "xori">;  def : PatGprImm<xor, XORI, simm16>;
 
 /*
 def FCVTWS : FPArithmR<0x0, GPR, FPR, "fcvtws">;
@@ -318,10 +327,10 @@ def : Pat<(any_sint_to_fp (i32 GPR:$rs1)), (FCVTSW $rs1)>;
 //===----------------------------------------------------------------------===//
 
 // i16 imm
-def : Pat<(i32 i32li16u:$imm), (MOVLIu imm:$imm)>;
-def : Pat<(i32 i32li16s:$imm), (MOVLIs imm:$imm)>;
+//def : Pat<(i32 i32li16u:$imm), (MOVLIu imm:$imm)>;
+//def : Pat<(i32 i32li16s:$imm), (MOVLIs imm:$imm)>;
 // i32 imm
-def : Pat<(i32 imm:$imm), (ORI (MOVHI (HI16 imm:$imm)), (LI16 imm:$imm))>;
+//def : Pat<(i32 imm:$imm), (ORI (MOVHI (HI16 imm:$imm)), (LI16 imm:$imm))>;
 
 def : Pat<(add (i32 AddrFI:$rs), simm16:$imm16),
           (ADDI (i32 AddrFI:$rs), simm16:$imm16)>;
