@@ -18,6 +18,7 @@ enum NodeType : unsigned {
   RET,
   CALL,
   BR_CC,
+  SELECT_CC,
 };
 
 } // namespace USimISD
@@ -70,7 +71,12 @@ private:
 
   bool mayBeEmittedAsTailCall(const CallInst *CI) const override;
 
+  MachineBasicBlock *
+  EmitInstrWithCustomInserter(MachineInstr &MI,
+                              MachineBasicBlock *BB) const override;
+
   SDValue lowerBR_CC(SDValue Op, SelectionDAG &DAG) const;
+  SDValue lowerSELECT_CC(SDValue Op, SelectionDAG &DAG) const;
   SDValue lowerFRAMEADDR(SDValue Op, SelectionDAG &DAG) const;
 };
 

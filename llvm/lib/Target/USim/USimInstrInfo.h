@@ -16,8 +16,6 @@ class USimInstrInfo : public USimGenInstrInfo {
   const USimSubtarget &STI;
   virtual void anchor();
 
-  const MCInstrDesc &getBrCond(USimCC::CondCode CC) const;
-
 public:
   USimInstrInfo(const USimSubtarget &);
 
@@ -64,6 +62,8 @@ public:
   virtual bool getBaseAndOffsetPosition(const MachineInstr &MI,
                                         unsigned &BasePos,
                                         unsigned &OffsetPos) const override;
+
+  const MCInstrDesc &getBrCond(USimCC::CondCode CC) const;
 };
 
 } // end namespace llvm

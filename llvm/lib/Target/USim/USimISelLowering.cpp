@@ -59,6 +59,9 @@ USimTargetLowering::USimTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::OR, MVT::i32, Legal);
   setOperationAction(ISD::AND, MVT::i32, Legal);
   setOperationAction(ISD::XOR, MVT::i32, Legal);
+  setOperationAction(ISD::SHL, MVT::i32, Legal);
+  setOperationAction(ISD::SRL, MVT::i32, Legal);
+  setOperationAction(ISD::SRA, MVT::i32, Legal);
 
   setOperationAction(ISD::LOAD, MVT::i32, Legal);
   setOperationAction(ISD::STORE, MVT::i32, Legal);
@@ -67,6 +70,7 @@ USimTargetLowering::USimTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::UNDEF, MVT::i32, Legal);
 
   setOperationAction(ISD::BR_CC, MVT::i32, Custom);
+  setOperationAction(ISD::SELECT_CC, MVT::i32, Custom);
 
   setOperationAction(ISD::FRAMEADDR, MVT::i32, Legal);
   // setOperationAction(ISD::FrameIndex, MVT::i32, Custom);
@@ -624,8 +628,8 @@ bool USimTargetLowering::mayBeEmittedAsTailCall(const CallInst *CI) const {
   return false;
 }
 
-static void translateSetCCForBranch(const SDLoc &DL, SDValue &LHS, SDValue &RHS,
-                                    ISD::CondCode &CC, SelectionDAG &DAG) {
+template <typename Opnd>
+static void translateSetCCForBranch(Opnd &LHS, Opnd &RHS, ISD::CondCode &CC) {
   switch (CC) {
   default:
     break;
@@ -639,8 +643,9 @@ static void translateSetCCForBranch(const SDLoc &DL, SDValue &LHS, SDValue &RHS,
   }
 }
 
+// TODO: style
 SDValue USimTargetLowering::lowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
-  SDValue CC = Op.getOperand(1);
+  ISD::CondCode CCVal = cast<CondCodeSDNode>(Op.getOperand(1))->get();
   SDValue LHS = Op.getOperand(2);
   SDValue RHS = Op.getOperand(3);
   SDValue Block = Op->getOperand(4);
@@ -648,12 +653,81 @@ SDValue USimTargetLowering::lowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
 
   assert(LHS.getValueType() == MVT::i32);
 
-  ISD::CondCode CCVal = cast<CondCodeSDNode>(CC)->get();
-  translateSetCCForBranch(DL, LHS, RHS, CCVal, DAG);
+  translateSetCCForBranch(LHS, RHS, CCVal);
   SDValue TargetCC = DAG.getCondCode(CCVal);
 
   return DAG.getNode(USimISD::BR_CC, DL, Op.getValueType(), Op.getOperand(0),
                      LHS, RHS, TargetCC, Block);
+}
+
+SDValue USimTargetLowering::lowerSELECT_CC(SDValue Op,
+                                           SelectionDAG &DAG) const {
+  SDValue LHS = Op.getOperand(0);
+  SDValue RHS = Op.getOperand(1);
+  SDValue TrueV = Op.getOperand(2);
+  SDValue FalseV = Op.getOperand(3);
+  ISD::CondCode CCVal = cast<CondCodeSDNode>(Op->getOperand(4))->get();
+  SDLoc DL(Op);
+
+  if (TrueV == FalseV)
+    return TrueV;
+
+  translateSetCCForBranch(LHS, RHS, CCVal);
+  SDValue TargetCC = DAG.getCondCode(CCVal);
+  SDValue Ops[] = {LHS, RHS, TargetCC, TrueV, FalseV};
+
+  return DAG.getNode(USimISD::SELECT_CC, DL, Op.getValueType(), Ops);
+}
+
+static MachineBasicBlock *emitSelect(MachineInstr &MI, MachineBasicBlock *BB,
+                                     const USimSubtarget &STI) {
+
+  const USimInstrInfo *TII = STI.getInstrInfo();
+  DebugLoc DL = MI.getDebugLoc();
+
+  const BasicBlock *LLVM_BB = BB->getBasicBlock();
+  MachineFunction::iterator I = ++BB->getIterator();
+  MachineBasicBlock *MBBHeader = BB;
+
+  MachineFunction *F = BB->getParent();
+  MachineBasicBlock *MBBTail = F->CreateMachineBasicBlock(LLVM_BB);
+  MachineBasicBlock *MBBFalse = F->CreateMachineBasicBlock(LLVM_BB);
+  F->insert(I, MBBFalse);
+  F->insert(I, MBBTail);
+
+  MBBTail->splice(MBBTail->begin(), MBBHeader,
+                  std::next(MachineBasicBlock::iterator(MI)), MBBHeader->end());
+  MBBTail->transferSuccessorsAndUpdatePHIs(MBBHeader);
+  MBBHeader->addSuccessor(MBBFalse);
+  MBBHeader->addSuccessor(MBBTail);
+
+  auto CC = static_cast<USimCC::CondCode>(MI.getOperand(3).getImm());
+  BuildMI(MBBHeader, DL, STI.getInstrInfo()->getBrCond(CC))
+      .addReg(MI.getOperand(1).getReg())
+      .addReg(MI.getOperand(2).getReg())
+      .addMBB(MBBTail);
+  MBBFalse->addSuccessor(MBBTail);
+
+  BuildMI(*MBBTail, MBBTail->begin(), DL, TII->get(USim::PHI),
+          MI.getOperand(0).getReg())
+      .addReg(MI.getOperand(4).getReg())
+      .addMBB(MBBHeader)
+      .addReg(MI.getOperand(5).getReg())
+      .addMBB(MBBFalse);
+
+  MI.eraseFromParent();
+  return MBBTail;
+}
+
+MachineBasicBlock *
+USimTargetLowering::EmitInstrWithCustomInserter(MachineInstr &MI,
+                                                MachineBasicBlock *BB) const {
+  switch (MI.getOpcode()) {
+  case USim::Select_CC_GPR:
+    return emitSelect(MI, BB, STI);
+  default:
+    llvm_unreachable("");
+  }
 }
 
 SDValue USimTargetLowering::lowerFRAMEADDR(SDValue Op,
@@ -676,6 +750,8 @@ SDValue USimTargetLowering::LowerOperation(SDValue Op,
   switch (Op->getOpcode()) {
   case ISD::BR_CC:
     return lowerBR_CC(Op, DAG);
+  case ISD::SELECT_CC:
+    return lowerSELECT_CC(Op, DAG);
   case ISD::FRAMEADDR:
     return lowerFRAMEADDR(Op, DAG);
   default:

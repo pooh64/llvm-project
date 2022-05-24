@@ -42,7 +42,14 @@ unsigned USimInstrInfo::isLoadFromStackSlot(const MachineInstr &MI,
 
 unsigned USimInstrInfo::isStoreToStackSlot(const MachineInstr &MI,
                                            int &FrameIndex) const {
-  llvm_unreachable("");
+  if (MI.getOpcode() != USim::STI_)
+    return 0;
+
+  if (MI.getOperand(1).isFI() && MI.getOperand(2).isImm() &&
+      MI.getOperand(2).getImm() == 0) {
+    FrameIndex = MI.getOperand(1).getIndex();
+    return MI.getOperand(0).getReg();
+  }
   return 0;
 }
 

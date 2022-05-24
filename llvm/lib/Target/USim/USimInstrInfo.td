@@ -17,6 +17,11 @@ def SDT_USimCallSeqEnd   : SDCallSeqEnd<[ SDTCisVT<0, i32>,
 def SDT_USimBrCC : SDTypeProfile<0, 4, [ SDTCisSameAs<0, 1>,
                                          SDTCisVT<2, OtherVT>,
                                          SDTCisVT<3, OtherVT>]>;
+def SDT_USimSelectCC     : SDTypeProfile<1, 5, [SDTCisSameAs<1, 2>,
+                                             SDTCisVT<3, OtherVT>,
+                                             SDTCisSameAs<0, 4>,
+                                             SDTCisSameAs<4, 5>]>;
+
 
 // These are target-independent nodes, but have target-specific formats.
 def callseq_start : SDNode<"ISD::CALLSEQ_START", SDT_USimCallSeqStart,
@@ -33,6 +38,9 @@ def usim_call     : SDNode<"USimISD::CALL", SDT_USimCall,
 
 def usim_brcc     : SDNode<"USimISD::BR_CC", SDT_USimBrCC,
                             [SDNPHasChain]>;
+
+def usim_selectcc     : SDNode<"USimISD::SELECT_CC", SDT_USimSelectCC,
+                               [SDNPInGlue]>;
 
 //===----------------------------------------------------------------------===//
 // Instruction format superclass
@@ -74,6 +82,8 @@ class SImmAsmOperand<int width, string suffix = "">
 class UImmAsmOperand<int width, string suffix = "">
     : ImmAsmOperand<"U", width, suffix> {
 }
+
+def imm32 : Operand<i32>;
 
 def simm16 : Operand<i32>, ImmLeaf<i32, [{return isInt<16>(Imm);}]> {
   let ParserMatchClass = SImmAsmOperand<16>;
@@ -254,6 +264,26 @@ def : PatBcc<SETGT, BGT>;
 def : PatBcc<SETULE, BLEU>;
 def : PatBcc<SETUGT, BGTU>;
 
+def IntCCtoUSimCC : SDNodeXForm<usim_selectcc, [{
+  ISD::CondCode CC = cast<CondCodeSDNode>(N->getOperand(2))->get();
+  USimCC::CondCode BrCC = getUSimCCForIntCC(CC);
+  return CurDAG->getTargetConstant(BrCC, SDLoc(N), MVT::i32);
+}]>;
+
+def usim_selectcc_frag : PatFrag<(ops node:$lhs, node:$rhs, node:$cc,
+                                       node:$truev, node:$falsev),
+                                  (usim_selectcc node:$lhs, node:$rhs,
+                                                  node:$cc, node:$truev,
+                                                  node:$falsev), [{}],
+                                  IntCCtoUSimCC>;
+
+let usesCustomInserter = 1 in
+def Select_CC_GPR
+    : USimPseudoInst<
+      (outs GPR:$rd), (ins GPR:$lhs, GPR:$rhs, imm32:$imm, GPR:$st, GPR:$sf),
+      "# PseudoSelect",
+      [(set i32:$rd, (usim_selectcc_frag:$imm GPR:$lhs, GPR:$rhs, cond, GPR:$st, GPR:$sf))]>;
+
 // movli
 let isAsCheapAsAMove = 1, isCodeGenOnly = 1, isReMaterializable = 1 in
 def MOVLIu : USimInst<0x0, (outs GPR:$rd), (ins i32li16u:$imm),
@@ -294,26 +324,30 @@ def : Pat<(i32 (load (add BaseAddr:$rs1, simm16:$imm))),
 def : Pat<(i32 (load (IsOrAdd AddrFI:$rs1, simm16:$imm))),
           (LDI AddrFI:$rs1, simm16:$imm)>;
 
-def ADD : ArithmRR<0x0, "add">;  def : PatGprGpr<add,  ADD>;
-def SUB : ArithmRR<0x0, "sub">;  def : PatGprGpr<sub,  SUB>;
-def MUL : ArithmRR<0x0, "mul">;  def : PatGprGpr<mul,  MUL>;
-def DIVS : ArithmRR<0x0, "divs">;  def : PatGprGpr<sdiv, DIVS>;
-def DIVU : ArithmRR<0x0, "divu">;  def : PatGprGpr<udiv, DIVU>;
-def REM :  ArithmRR<0x0, "rems">;  def : PatGprGpr<srem, REM>;
-def REMU : ArithmRR<0x0, "remu">;  def : PatGprGpr<urem, REMU>;
-def OR  : ArithmRR<0x0, "or">;   def : PatGprGpr<or,   OR>;
-def AND : ArithmRR<0x0, "and">;  def : PatGprGpr<and,  AND>;
-def XOR : ArithmRR<0x0, "xor">;  def : PatGprGpr<xor,  XOR>;
+def ADD  : ArithmRR<0x0, "add">;  def : PatGprGpr<add,  ADD>;
+def SUB  : ArithmRR<0x0, "sub">;  def : PatGprGpr<sub,  SUB>;
+def MUL  : ArithmRR<0x0, "mul">;  def : PatGprGpr<mul,  MUL>;
+def DIVS : ArithmRR<0x0, "divs">; def : PatGprGpr<sdiv, DIVS>;
+def DIVU : ArithmRR<0x0, "divu">; def : PatGprGpr<udiv, DIVU>;
+def REM  : ArithmRR<0x0, "rems">; def : PatGprGpr<srem, REM>;
+def REMU : ArithmRR<0x0, "remu">; def : PatGprGpr<urem, REMU>;
+def OR   : ArithmRR<0x0, "or">;   def : PatGprGpr<or,   OR>;
+def AND  : ArithmRR<0x0, "and">;  def : PatGprGpr<and,  AND>;
+def XOR  : ArithmRR<0x0, "xor">;  def : PatGprGpr<xor,  XOR>;
 
-def ADDI : ArithmRI<0x0, "addi">; def : PatGprImm<add, ADDI, simm16>;
-def MULI : ArithmRI<0x0, "muli">; def : PatGprImm<mul, MULI, simm16>;
+def ADDI  : ArithmRI<0x0, "addi">;  def : PatGprImm<add, ADDI, simm16>;
+def MULI  : ArithmRI<0x0, "muli">;  def : PatGprImm<mul, MULI, simm16>;
 def DIVIS : ArithmRI<0x0, "divis">; def : PatGprImm<sdiv, DIVIS, simm16>;
 def DIVIU : ArithmRI<0x0, "diviu">; def : PatGprImm<udiv, DIVIU, simm16>;
 def REMIS : ArithmRI<0x0, "remis">; def : PatGprImm<srem, REMIS, simm16>;
 def REMIU : ArithmRI<0x0, "remiu">; def : PatGprImm<urem, REMIU, simm16>;
-def ORI  : ArithmRI<0x0, "ori">;  def : PatGprImm<or, ORI, simm16>;
+def ORI   : ArithmRI<0x0, "ori">;   def : PatGprImm<or, ORI, simm16>;
 def ANDI  : ArithmRI<0x0, "andi">;  def : PatGprImm<and, ANDI, simm16>;
 def XORI  : ArithmRI<0x0, "xori">;  def : PatGprImm<xor, XORI, simm16>;
+
+def SHL  : ArithmRR<0x0, "shl">;   def : PatGprGpr<shl, SHL>;
+def SHR  : ArithmRR<0x0, "shr">;   def : PatGprGpr<srl, SHR>;
+def SHRA : ArithmRR<0x0, "shra">;  def : PatGprGpr<sra, SHRA>;
 
 /*
 def FCVTWS : FPArithmR<0x0, GPR, FPR, "fcvtws">;
